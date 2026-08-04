@@ -1,22 +1,11 @@
-datasource db {
-  provider = "postgresql"
-}
-
 generator client {
   provider     = "prisma-client"
   output       = "../src/generated/prisma"
   moduleFormat = "cjs"
 }
 
-enum CompoundingFrequency {
-  MONTHLY
-  QUARTERLY
-  YEARLY
-}
-
-enum TransactionType {
-  DEBIT
-  CREDIT
+datasource db {
+  provider = "postgresql"
 }
 
 model User {
@@ -66,4 +55,15 @@ model Transaction {
   @@index([customerId])
   @@index([interestStartDate])
   @@map("transactions")
+}
+
+enum CompoundingFrequency {
+  MONTHLY
+  QUARTERLY
+  YEARLY
+}
+
+enum TransactionType {
+  DEBIT
+  CREDIT
 }
