@@ -6,6 +6,7 @@ import morgan from 'morgan';
 import { errorHandler } from './middleware/errorHandler';
 import { logger } from './utils/logger';
 import { config } from './config';
+import customerRoutes from './routes/customer.routes';
 
 const app = express();
 
@@ -34,6 +35,9 @@ app.get('/health', (_req, res) => {
     timestamp: new Date().toISOString(),
   });
 });
+
+// API routes
+app.use('/api/v1/customers', customerRoutes);
 
 // Centralized error handling middleware
 app.use(errorHandler);
