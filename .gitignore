@@ -12,3 +12,5 @@ yarn-error.log*
 .prettiercache
 coverage/
 .prisma/
+
+/src/generated/prisma
