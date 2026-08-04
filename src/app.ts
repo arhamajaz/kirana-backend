@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
+import compression from 'compression';
 import morgan from 'morgan';
 import { errorHandler } from './middleware/errorHandler';
 import { logger } from './utils/logger';
@@ -10,8 +11,10 @@ const app = express();
 
 // Middleware
 app.use(helmet());
+app.use(compression());
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '10kb' }));
+app.use(express.urlencoded({ extended: true, limit: '10kb' }));
 
 // Request logging middleware
 const morganFormat = config.NODE_ENV === 'development' ? 'dev' : 'combined';
