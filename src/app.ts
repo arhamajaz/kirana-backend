@@ -1,17 +1,20 @@
 import express from 'express';
 import cors from 'cors';
+import helmet from 'helmet';
 import morgan from 'morgan';
 import { errorHandler } from './middleware/errorHandler';
 import { logger } from './utils/logger';
+import { config } from './config';
 
 const app = express();
 
 // Middleware
+app.use(helmet());
 app.use(cors());
 app.use(express.json());
 
 // Request logging middleware
-const morganFormat = process.env.NODE_ENV === 'development' ? 'dev' : 'combined';
+const morganFormat = config.NODE_ENV === 'development' ? 'dev' : 'combined';
 app.use(
   morgan(morganFormat, {
     stream: {

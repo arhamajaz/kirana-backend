@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
+import { z } from 'zod';
 import { logger } from '../utils/logger';
 
 export class AppError extends Error {
@@ -14,12 +15,29 @@ export class AppError extends Error {
   }
 }
 
-export const errorHandler = (err: Error, _req: Request, res: Response, _next: NextFunction) => {
+export const errorHandler = (
+  err: Error,
+  _req: Request,
+  res: Response,
+  _next: NextFunction,
+): Response => {
   if (err instanceof AppError) {
     logger.warn(`Operational error: ${err.message} (Status: ${err.statusCode})`);
     return res.status(err.statusCode).json({
       status: 'error',
       message: err.message,
+    });
+  }
+
+  if (err instanceof z.ZodError) {
+    logger.warn(`Validation error: ${JSON.stringify(err.issues)}`);
+    return res.status(400).json({
+      status: 'error',
+      message: 'Validation failed',
+      errors: err.issues.map((e: z.ZodIssue) => ({
+        field: e.path.join('.'),
+        message: e.message,
+      })),
     });
   }
 
