@@ -10,6 +10,7 @@ const configSchema = z.object({
     .transform((val) => parseInt(val, 10)),
   DATABASE_URL: z.string().url(),
   JWT_SECRET: z.string().min(8, 'JWT_SECRET must be at least 8 characters long'),
+  JWT_EXPIRES_IN: z.string().default('1d'),
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
 });
 

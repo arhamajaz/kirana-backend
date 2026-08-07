@@ -1,6 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
 import { CustomerService } from '../services/customer.service';
-import { getCurrentUserId } from '../utils/currentUser';
 
 const customerService = new CustomerService();
 
@@ -14,7 +13,7 @@ export class CustomerController {
     next: NextFunction,
   ): Promise<void> => {
     try {
-      const userId = await getCurrentUserId(req);
+      const userId = req.user.id;
       const customer = await customerService.createCustomer(userId, req.body);
       res.status(201).json({
         status: 'success',
@@ -30,7 +29,7 @@ export class CustomerController {
    */
   public getCustomer = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const userId = await getCurrentUserId(req);
+      const userId = req.user.id;
       const customer = await customerService.getCustomerById(userId, req.params.id as string);
       res.status(200).json({
         status: 'success',
@@ -50,7 +49,7 @@ export class CustomerController {
     next: NextFunction,
   ): Promise<void> => {
     try {
-      const userId = await getCurrentUserId(req);
+      const userId = req.user.id;
       const paginationParams = {
         page: req.query.page as unknown as number,
         limit: req.query.limit as unknown as number,
@@ -76,7 +75,7 @@ export class CustomerController {
     next: NextFunction,
   ): Promise<void> => {
     try {
-      const userId = await getCurrentUserId(req);
+      const userId = req.user.id;
       const query = (req.query.q as string) || '';
       const paginationParams = {
         page: req.query.page as unknown as number,
@@ -103,7 +102,7 @@ export class CustomerController {
     next: NextFunction,
   ): Promise<void> => {
     try {
-      const userId = await getCurrentUserId(req);
+      const userId = req.user.id;
       const customer = await customerService.updateCustomer(
         userId,
         req.params.id as string,
@@ -127,7 +126,7 @@ export class CustomerController {
     next: NextFunction,
   ): Promise<void> => {
     try {
-      const userId = await getCurrentUserId(req);
+      const userId = req.user.id;
       await customerService.archiveCustomer(userId, req.params.id as string);
       res.status(200).json({
         status: 'success',

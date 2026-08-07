@@ -1,5 +1,7 @@
 import { Router } from 'express';
 import { CustomerController } from '../controllers/customer.controller';
+import { TransactionController } from '../controllers/transaction.controller';
+import { LedgerController } from '../controllers/ledger.controller';
 import {
   validateBody,
   validateQuery,
@@ -7,10 +9,16 @@ import {
   updateCustomerSchema,
   paginationAndSortSchema,
   searchCustomersSchema,
+  ledgerQuerySchema,
 } from '../middleware/validation.middleware';
+import { validateListTransactions } from '../middleware/transactionValidation.middleware';
+import { authMiddleware } from '../middleware/auth.middleware';
 
 const router = Router();
 const controller = new CustomerController();
+
+// Protect all customer routes
+router.use(authMiddleware);
 
 // Create customer
 router.post('/', validateBody(createCustomerSchema), controller.createCustomer);
@@ -29,5 +37,22 @@ router.patch('/:id', validateBody(updateCustomerSchema), controller.updateCustom
 
 // Soft delete customer
 router.delete('/:id', controller.deleteCustomer);
+
+const transactionController = new TransactionController();
+const ledgerController = new LedgerController();
+
+// Get customer transactions
+router.get(
+  '/:customerId/transactions',
+  validateListTransactions,
+  transactionController.getCustomerTransactions,
+);
+
+// Get customer ledger with dynamic interest
+router.get(
+  '/:customerId/ledger',
+  validateQuery(ledgerQuerySchema),
+  ledgerController.getCustomerLedger,
+);
 
 export default router;

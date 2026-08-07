@@ -32,6 +32,11 @@ export const createCustomerSchema = z.object({
   }),
 });
 
+export const loginSchema = z.object({
+  email: z.string().trim().toLowerCase().email('Invalid email format'),
+  password: z.string().min(1, 'Password is required'),
+});
+
 export const updateCustomerSchema = z
   .object({
     name: z
@@ -129,3 +134,12 @@ export const validateQuery = (schema: Schema) => {
     }
   };
 };
+
+export const ledgerQuerySchema = z.object({
+  calculationDate: z
+    .string()
+    .refine((val) => !isNaN(Date.parse(val)), {
+      message: 'Invalid date format',
+    })
+    .optional(),
+});

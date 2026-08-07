@@ -7,6 +7,8 @@ import { errorHandler } from './middleware/errorHandler';
 import { logger } from './utils/logger';
 import { config } from './config';
 import customerRoutes from './routes/customer.routes';
+import transactionRoutes from './routes/transaction.routes';
+import authRoutes from './routes/auth.routes';
 
 const app = express();
 
@@ -37,7 +39,9 @@ app.get('/health', (_req, res) => {
 });
 
 // API routes
+app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/customers', customerRoutes);
+app.use('/api/v1/transactions', transactionRoutes);
 
 // Centralized error handling middleware
 app.use(errorHandler);
