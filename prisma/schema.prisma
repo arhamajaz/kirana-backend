@@ -27,7 +27,9 @@ model Customer {
   phoneNumber          String               @map("phone_number")
   lendingRate          Decimal              @map("lending_rate") @db.Decimal(5, 2)
   depositRate          Decimal              @map("deposit_rate") @db.Decimal(5, 2)
-  compoundingFrequency CompoundingFrequency @map("compounding_frequency")
+  defaultInterestType  InterestType         @default(SIMPLE) @map("default_interest_type")
+  compoundingFrequency CompoundingFrequency @default(MONTHLY) @map("compounding_frequency")
+  customCompoundDays   Int?                 @map("custom_compound_days")
   isActive             Boolean              @default(true) @map("is_active")
   createdAt            DateTime             @default(now()) @map("created_at")
   updatedAt            DateTime             @updatedAt @map("updated_at")
@@ -40,30 +42,50 @@ model Customer {
 }
 
 model Transaction {
-  id                String          @id @default(uuid())
-  customerId        String          @map("customer_id")
-  type              TransactionType @map("type")
-  amount            Decimal         @map("amount") @db.Decimal(12, 2)
-  date              DateTime        @map("date")
-  interestStartDate DateTime        @map("interest_start_date")
-  remarks           String?         @map("remarks")
-  isVoided          Boolean         @default(false) @map("is_voided")
-  createdAt         DateTime        @default(now()) @map("created_at")
-  updatedAt         DateTime        @updatedAt @map("updated_at")
-  customer          Customer        @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  id                   String                @id @default(uuid())
+  customerId           String                @map("customer_id")
+  type                 TransactionType       @map("type")
+  amount               Decimal               @map("amount") @db.Decimal(12, 2)
+  date                 DateTime              @map("date")
+  interestStartDate    DateTime              @map("interest_start_date")
+  interestType         InterestType?         @map("interest_type")
+  interestRate         Decimal?              @map("interest_rate") @db.Decimal(5, 2)
+  compoundingFrequency CompoundingFrequency? @map("compounding_frequency")
+  customCompoundDays   Int?                  @map("custom_compound_days")
+  dueDate              DateTime?             @map("due_date")
+  remarks              String?               @map("remarks")
+  isVoided             Boolean               @default(false) @map("is_voided")
+  targetEntryId        String?               @map("target_entry_id")
+  createdAt            DateTime              @default(now()) @map("created_at")
+  updatedAt            DateTime              @updatedAt @map("updated_at")
+  customer             Customer              @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  targetEntry          Transaction?          @relation("TargetedPayments", fields: [targetEntryId], references: [id], onDelete: SetNull)
+  targetedPayments     Transaction[]         @relation("TargetedPayments")
 
   @@index([customerId])
   @@index([interestStartDate])
+  @@index([targetEntryId])
   @@map("transactions")
 }
 
+enum InterestType {
+  NO_INTEREST
+  SIMPLE
+  COMPOUND
+}
+
 enum CompoundingFrequency {
+  DAILY
+  WEEKLY
   MONTHLY
   QUARTERLY
+  HALF_YEARLY
   YEARLY
+  CUSTOM
 }
 
 enum TransactionType {
   DEBIT
   CREDIT
 }
+

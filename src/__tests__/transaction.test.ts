@@ -1,7 +1,7 @@
 import request from 'supertest';
 import app from '../app';
 import { prisma, disconnectDb } from '../config/database';
-import { CompoundingFrequency, Transaction, TransactionType } from '../generated/prisma/client';
+import { CompoundingFrequency, InterestType, Transaction, TransactionType } from '../generated/prisma/client';
 import jwt from 'jsonwebtoken';
 import { config } from '../config';
 
@@ -263,6 +263,82 @@ describe('Transaction Module Integration Tests', () => {
         });
 
       expect(response.status).toBe(404);
+    });
+
+    it('should create DEBIT with explicit interestType and interestRate', async () => {
+      const response = await request(app)
+        .post('/api/v1/transactions')
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({
+          customerId: customerActiveA.id,
+          type: TransactionType.DEBIT,
+          amount: 2000,
+          date: new Date().toISOString(),
+          interestStartDate: new Date().toISOString(),
+          interestType: 'SIMPLE',
+          interestRate: 18,
+          dueDate: new Date(Date.now() + 86400000).toISOString(),
+        });
+
+      expect(response.status).toBe(201);
+      expect(response.body.data.transaction.interestType).toBe('SIMPLE');
+      expect(Number(response.body.data.transaction.interestRate)).toBe(18);
+    });
+
+    it('should create DEBIT with COMPOUND and CUSTOM frequency with customCompoundDays', async () => {
+      const response = await request(app)
+        .post('/api/v1/transactions')
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({
+          customerId: customerActiveA.id,
+          type: TransactionType.DEBIT,
+          amount: 3000,
+          date: new Date().toISOString(),
+          interestStartDate: new Date().toISOString(),
+          interestType: 'COMPOUND',
+          compoundingFrequency: 'CUSTOM',
+          customCompoundDays: 30,
+        });
+
+      expect(response.status).toBe(201);
+      expect(response.body.data.transaction.compoundingFrequency).toBe('CUSTOM');
+      expect(response.body.data.transaction.customCompoundDays).toBe(30);
+    });
+
+    it('should reject DEBIT with CUSTOM compounding if customCompoundDays is missing', async () => {
+      const response = await request(app)
+        .post('/api/v1/transactions')
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({
+          customerId: customerActiveA.id,
+          type: TransactionType.DEBIT,
+          amount: 3000,
+          date: new Date().toISOString(),
+          interestStartDate: new Date().toISOString(),
+          interestType: 'COMPOUND',
+          compoundingFrequency: 'CUSTOM',
+        });
+
+      expect(response.status).toBe(400);
+      expect(response.body.message).toBe('Validation failed');
+    });
+
+    it('should reject CREDIT if interest configuration is supplied (Rule 2)', async () => {
+      const response = await request(app)
+        .post('/api/v1/transactions')
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({
+          customerId: customerActiveA.id,
+          type: TransactionType.CREDIT,
+          amount: 500,
+          date: new Date().toISOString(),
+          interestStartDate: new Date().toISOString(),
+          interestType: 'SIMPLE', // Forbidden on CREDIT
+        });
+
+      expect(response.status).toBe(400);
+      expect(response.body.message).toBe('Validation failed');
+      expect(JSON.stringify(response.body.errors)).toContain('not allowed for CREDIT');
     });
   });
 
@@ -552,6 +628,187 @@ describe('Transaction Module Integration Tests', () => {
 
       expect(response.status).toBe(200);
       expect(response.body.data.customers).toBeDefined();
+    });
+  });
+
+  describe('Targeted Entry Settlement - Validation & Security', () => {
+    let debitA: Transaction;
+    let debitB: Transaction;
+    let voidedDebit: Transaction;
+
+    beforeEach(async () => {
+      await prisma.transaction.deleteMany();
+
+      debitA = await prisma.transaction.create({
+        data: {
+          customerId: customerActiveA.id,
+          type: TransactionType.DEBIT,
+          amount: 1000,
+          date: new Date('2025-01-01T00:00:00Z'),
+          interestStartDate: new Date('2025-01-01T00:00:00Z'),
+          interestType: InterestType.SIMPLE,
+          interestRate: 12,
+        },
+      });
+
+      debitB = await prisma.transaction.create({
+        data: {
+          customerId: customerActiveB.id, // Merchant B's customer
+          type: TransactionType.DEBIT,
+          amount: 2000,
+          date: new Date('2025-01-01T00:00:00Z'),
+          interestStartDate: new Date('2025-01-01T00:00:00Z'),
+          interestType: InterestType.SIMPLE,
+          interestRate: 12,
+        },
+      });
+
+      voidedDebit = await prisma.transaction.create({
+        data: {
+          customerId: customerActiveA.id,
+          type: TransactionType.DEBIT,
+          amount: 500,
+          date: new Date('2025-01-01T00:00:00Z'),
+          interestStartDate: new Date('2025-01-01T00:00:00Z'),
+          isVoided: true,
+        },
+      });
+    });
+
+    it('should successfully create a CREDIT targeting an eligible DEBIT entry', async () => {
+      const response = await request(app)
+        .post('/api/v1/transactions')
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({
+          customerId: customerActiveA.id,
+          type: 'CREDIT',
+          amount: 500,
+          date: '2025-02-01T00:00:00Z',
+          interestStartDate: '2025-02-01T00:00:00Z',
+          targetEntryId: debitA.id,
+          remarks: 'Targeted payment to debitA',
+        });
+
+      expect(response.status).toBe(201);
+      expect(response.body.data.transaction.targetEntryId).toBe(debitA.id);
+    });
+
+    it('should reject DEBIT transaction when targetEntryId is provided (400)', async () => {
+      const response = await request(app)
+        .post('/api/v1/transactions')
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({
+          customerId: customerActiveA.id,
+          type: 'DEBIT',
+          amount: 1000,
+          date: '2025-01-01T00:00:00Z',
+          interestStartDate: '2025-01-01T00:00:00Z',
+          targetEntryId: debitA.id,
+        });
+
+      expect(response.status).toBe(400);
+      expect(response.body.errors[0].message).toContain('Target entry ID is only allowed for CREDIT');
+    });
+
+    it('should reject CREDIT with malformed targetEntryId format (400)', async () => {
+      const response = await request(app)
+        .post('/api/v1/transactions')
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({
+          customerId: customerActiveA.id,
+          type: 'CREDIT',
+          amount: 500,
+          date: '2025-02-01T00:00:00Z',
+          interestStartDate: '2025-02-01T00:00:00Z',
+          targetEntryId: 'not-a-valid-uuid',
+        });
+
+      expect(response.status).toBe(400);
+      expect(response.body.errors[0].message).toContain('Invalid target entry ID format');
+    });
+
+    it('should reject CREDIT targeting a non-existent transaction ID (404)', async () => {
+      const nonExistentUuid = 'a0000000-0000-4000-8000-000000000000';
+      const response = await request(app)
+        .post('/api/v1/transactions')
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({
+          customerId: customerActiveA.id,
+          type: 'CREDIT',
+          amount: 500,
+          date: '2025-02-01T00:00:00Z',
+          interestStartDate: '2025-02-01T00:00:00Z',
+          targetEntryId: nonExistentUuid,
+        });
+
+      expect(response.status).toBe(404);
+      expect(response.body.message).toContain('Target debit transaction not found');
+    });
+
+    it('should reject CREDIT targeting another merchant\'s transaction with 404 (multi-tenant security)', async () => {
+      // Merchant A attempts to target Merchant B's debit
+      const response = await request(app)
+        .post('/api/v1/transactions')
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({
+          customerId: customerActiveA.id,
+          type: 'CREDIT',
+          amount: 500,
+          date: '2025-02-01T00:00:00Z',
+          interestStartDate: '2025-02-01T00:00:00Z',
+          targetEntryId: debitB.id,
+        });
+
+      expect(response.status).toBe(404);
+      expect(response.body.message).toContain('Target debit transaction not found');
+    });
+
+    it('should reject CREDIT targeting a voided transaction (400)', async () => {
+      const response = await request(app)
+        .post('/api/v1/transactions')
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({
+          customerId: customerActiveA.id,
+          type: 'CREDIT',
+          amount: 250,
+          date: '2025-02-01T00:00:00Z',
+          interestStartDate: '2025-02-01T00:00:00Z',
+          targetEntryId: voidedDebit.id,
+        });
+
+      expect(response.status).toBe(400);
+      expect(response.body.message).toContain('Cannot target a voided transaction');
+    });
+
+    it('should reject CREDIT targeting an already settled debit entry (400)', async () => {
+      // 1. Settle debitA with a 1,100 payment on 2025-02-01
+      await request(app)
+        .post('/api/v1/transactions')
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({
+          customerId: customerActiveA.id,
+          type: 'CREDIT',
+          amount: 1100,
+          date: '2025-02-01T00:00:00Z',
+          interestStartDate: '2025-02-01T00:00:00Z',
+          targetEntryId: debitA.id,
+        });
+
+      // 2. Attempt another targeted payment to already settled debitA
+      const response = await request(app)
+        .post('/api/v1/transactions')
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({
+          customerId: customerActiveA.id,
+          type: 'CREDIT',
+          amount: 500,
+          date: '2025-03-01T00:00:00Z',
+          interestStartDate: '2025-03-01T00:00:00Z',
+          targetEntryId: debitA.id,
+        });
+
+      expect(response.status).toBe(400);
+      expect(response.body.message).toContain('already fully settled');
     });
   });
 });

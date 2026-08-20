@@ -1,6 +1,13 @@
 import { prisma } from '../config/database';
-import { Prisma, Transaction, TransactionType } from '../generated/prisma/client';
+import {
+  Prisma,
+  Transaction,
+  TransactionType,
+  InterestType,
+  CompoundingFrequency,
+} from '../generated/prisma/client';
 import { AppError } from '../middleware/errorHandler';
+import { LedgerService } from './ledger.service';
 
 export interface CreateTransactionInput {
   customerId: string;
@@ -8,6 +15,12 @@ export interface CreateTransactionInput {
   amount: number;
   date: Date;
   interestStartDate: Date;
+  interestType?: InterestType | null;
+  interestRate?: number | null;
+  compoundingFrequency?: CompoundingFrequency | null;
+  customCompoundDays?: number | null;
+  dueDate?: Date | null;
+  targetEntryId?: string | null;
   remarks?: string | null;
 }
 
@@ -21,7 +34,7 @@ export interface TransactionFilters {
 export interface PaginationParams {
   page: number;
   limit: number;
-  sort: 'date' | 'amount' | 'interestStartDate' | 'createdAt';
+  sort: 'date' | 'amount' | 'interestStartDate' | 'dueDate' | 'createdAt';
   order: 'asc' | 'desc';
 }
 
@@ -38,6 +51,8 @@ export interface PaginatedResult<T> {
 }
 
 export class TransactionService {
+  private ledgerService = new LedgerService();
+
   /**
    * Creates a new transaction atomically.
    * Verifies the customer exists, is active, and belongs to the merchant.
@@ -46,6 +61,50 @@ export class TransactionService {
     merchantId: string,
     data: CreateTransactionInput,
   ): Promise<Transaction> {
+    // 1. Validate targetEntryId if specified for CREDIT
+    if (data.type === TransactionType.CREDIT && data.targetEntryId) {
+      const target = await prisma.transaction.findFirst({
+        where: {
+          id: data.targetEntryId,
+        },
+        include: {
+          customer: true,
+        },
+      });
+
+      if (
+        !target ||
+        target.customer.userId !== merchantId ||
+        target.customerId !== data.customerId ||
+        !target.customer.isActive
+      ) {
+        throw new AppError('Target debit transaction not found.', 404);
+      }
+
+      if (target.type !== TransactionType.DEBIT) {
+        throw new AppError('Target transaction must be a DEBIT entry.', 400);
+      }
+
+      if (target.isVoided) {
+        throw new AppError('Cannot target a voided transaction.', 400);
+      }
+
+      // Check if target is already fully settled at payment date
+      const ledgerState = await this.ledgerService.generateLedger(
+        merchantId,
+        data.customerId,
+        data.date,
+      );
+      const targetEntry = ledgerState.entries.find((e) => e.entryId === data.targetEntryId);
+      if (
+        targetEntry &&
+        targetEntry.remainingPrincipal <= 0 &&
+        targetEntry.remainingInterest <= 0
+      ) {
+        throw new AppError('Target debit transaction is already fully settled.', 400);
+      }
+    }
+
     return prisma.$transaction(async (tx) => {
       // 1. Verify customer exists, belongs to the merchant, and is active
       const customer = await tx.customer.findFirst({
@@ -60,7 +119,10 @@ export class TransactionService {
         throw new AppError('Customer not found.', 404);
       }
 
-      // 2. Create the transaction record
+      // 2. Determine per-entry configuration
+      const isDebit = data.type === TransactionType.DEBIT;
+
+      // 3. Create the transaction record
       return tx.transaction.create({
         data: {
           customerId: data.customerId,
@@ -68,6 +130,15 @@ export class TransactionService {
           amount: data.amount,
           date: data.date,
           interestStartDate: data.interestStartDate,
+          interestType: isDebit ? data.interestType || null : null,
+          interestRate:
+            isDebit && data.interestRate !== undefined && data.interestRate !== null
+              ? data.interestRate
+              : null,
+          compoundingFrequency: isDebit ? data.compoundingFrequency || null : null,
+          customCompoundDays: isDebit ? data.customCompoundDays || null : null,
+          dueDate: isDebit && data.dueDate ? data.dueDate : null,
+          targetEntryId: !isDebit && data.targetEntryId ? data.targetEntryId : null,
           remarks: data.remarks || null,
           isVoided: false,
         },
@@ -105,6 +176,12 @@ export class TransactionService {
       amount: transaction.amount,
       date: transaction.date,
       interestStartDate: transaction.interestStartDate,
+      interestType: transaction.interestType,
+      interestRate: transaction.interestRate,
+      compoundingFrequency: transaction.compoundingFrequency,
+      customCompoundDays: transaction.customCompoundDays,
+      dueDate: transaction.dueDate,
+      targetEntryId: transaction.targetEntryId,
       remarks: transaction.remarks,
       isVoided: transaction.isVoided,
       createdAt: transaction.createdAt,

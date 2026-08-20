@@ -12,25 +12,44 @@ const phoneValidator = z
     message: 'Phone number must be exactly 10 digits',
   });
 
-export const createCustomerSchema = z.object({
-  name: z
-    .string()
-    .trim()
-    .min(1, 'Name is required')
-    .max(100, 'Name must be less than 100 characters'),
-  phoneNumber: phoneValidator,
-  lendingRate: z.coerce
-    .number()
-    .min(0, 'Lending rate cannot be negative')
-    .max(100, 'Lending rate cannot exceed 100%'),
-  depositRate: z.coerce
-    .number()
-    .min(0, 'Deposit rate cannot be negative')
-    .max(100, 'Deposit rate cannot exceed 100%'),
-  compoundingFrequency: z.enum(['MONTHLY', 'QUARTERLY', 'YEARLY'], {
-    message: 'Compounding frequency must be MONTHLY, QUARTERLY, or YEARLY',
-  }),
-});
+export const createCustomerSchema = z
+  .object({
+    name: z
+      .string()
+      .trim()
+      .min(1, 'Name is required')
+      .max(100, 'Name must be less than 100 characters'),
+    phoneNumber: phoneValidator,
+    lendingRate: z.coerce
+      .number()
+      .min(0, 'Lending rate cannot be negative')
+      .max(100, 'Lending rate cannot exceed 100%'),
+    depositRate: z.coerce
+      .number()
+      .min(0, 'Deposit rate cannot be negative')
+      .max(100, 'Deposit rate cannot exceed 100%'),
+    defaultInterestType: z.enum(['NO_INTEREST', 'SIMPLE', 'COMPOUND']).default('SIMPLE'),
+    compoundingFrequency: z
+      .enum(['DAILY', 'WEEKLY', 'MONTHLY', 'QUARTERLY', 'HALF_YEARLY', 'YEARLY', 'CUSTOM'])
+      .default('MONTHLY'),
+    customCompoundDays: z.coerce
+      .number()
+      .int('Custom compound days must be an integer')
+      .positive('Custom compound days must be greater than zero')
+      .optional(),
+  })
+  .refine(
+    (data) => {
+      if (data.compoundingFrequency === 'CUSTOM') {
+        return !!data.customCompoundDays && data.customCompoundDays > 0;
+      }
+      return true;
+    },
+    {
+      message: 'customCompoundDays is required when compounding frequency is CUSTOM',
+      path: ['customCompoundDays'],
+    },
+  );
 
 export const loginSchema = z.object({
   email: z.string().trim().toLowerCase().email('Invalid email format'),
@@ -56,17 +75,38 @@ export const updateCustomerSchema = z
       .min(0, 'Deposit rate cannot be negative')
       .max(100, 'Deposit rate cannot exceed 100%')
       .optional(),
-    compoundingFrequency: z.enum(['MONTHLY', 'QUARTERLY', 'YEARLY']).optional(),
+    defaultInterestType: z.enum(['NO_INTEREST', 'SIMPLE', 'COMPOUND']).optional(),
+    compoundingFrequency: z
+      .enum(['DAILY', 'WEEKLY', 'MONTHLY', 'QUARTERLY', 'HALF_YEARLY', 'YEARLY', 'CUSTOM'])
+      .optional(),
+    customCompoundDays: z.coerce
+      .number()
+      .int('Custom compound days must be an integer')
+      .positive('Custom compound days must be greater than zero')
+      .optional(),
   })
   .refine((data) => Object.keys(data).length > 0, {
     message: 'At least one field must be provided for update',
-  });
+  })
+  .refine(
+    (data) => {
+      if (data.compoundingFrequency === 'CUSTOM') {
+        return !!data.customCompoundDays && data.customCompoundDays > 0;
+      }
+      return true;
+    },
+    {
+      message: 'customCompoundDays is required when compounding frequency is CUSTOM',
+      path: ['customCompoundDays'],
+    },
+  );
 
 const allowedSortFields = [
   'name',
   'phoneNumber',
   'lendingRate',
   'depositRate',
+  'defaultInterestType',
   'compoundingFrequency',
   'createdAt',
   'updatedAt',
