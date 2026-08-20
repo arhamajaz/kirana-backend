@@ -12,10 +12,29 @@ import authRoutes from './routes/auth.routes';
 
 const app = express();
 
-// Middleware
+// Security & Performance Middleware
 app.use(helmet());
 app.use(compression());
-app.use(cors());
+
+// Environment-controlled CORS configuration
+if (config.CORS_ALLOWED_ORIGINS === '*') {
+  app.use(cors({ origin: '*' }));
+} else {
+  const allowedOrigins = config.CORS_ALLOWED_ORIGINS.split(',').map((o) => o.trim());
+  app.use(
+    cors({
+      origin: (origin, callback) => {
+        // Allow requests with no origin (e.g. mobile apps, curl, server-to-server, health probes)
+        if (!origin || allowedOrigins.includes(origin)) {
+          callback(null, true);
+        } else {
+          callback(new Error(`CORS Error: Origin ${origin} not allowed`));
+        }
+      },
+    }),
+  );
+}
+
 app.use(express.json({ limit: '10kb' }));
 app.use(express.urlencoded({ extended: true, limit: '10kb' }));
 

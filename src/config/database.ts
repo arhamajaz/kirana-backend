@@ -4,10 +4,18 @@ import pg from 'pg';
 import { config } from './index';
 import { logger } from '../utils/logger';
 
-const pool = new pg.Pool({
+const poolConfig: pg.PoolConfig = {
   connectionString: config.DATABASE_URL,
-  max: 1,
-});
+  max: config.DATABASE_POOL_SIZE,
+};
+
+if (config.DATABASE_SSL) {
+  poolConfig.ssl = {
+    rejectUnauthorized: config.DATABASE_SSL_REJECT_UNAUTHORIZED,
+  };
+}
+
+const pool = new pg.Pool(poolConfig);
 
 pool.on('error', (err) => {
   logger.error(`Unexpected database pool error: ${err.message}\nStack: ${err.stack}`);
