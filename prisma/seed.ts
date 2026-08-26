@@ -13,6 +13,10 @@ async function main() {
   console.log('Seeding database...');
 
   // 1. Clean existing data (avoid duplicate keys on multiple runs)
+  await prisma.insurance.deleteMany();
+  await prisma.cashbook.deleteMany();
+  await prisma.bill.deleteMany();
+  await prisma.item.deleteMany();
   await prisma.transaction.deleteMany();
   await prisma.customer.deleteMany();
   await prisma.user.deleteMany();
@@ -55,7 +59,6 @@ async function main() {
   console.log(`Created customers: ${customer1.name}, ${customer2.name}`);
 
   // 4. Create mock transactions for Customer 1 (Rajesh Kumar)
-  // Monthly compounding, lending rate 24%, deposit rate 12%
   await prisma.transaction.createMany({
     data: [
       {
@@ -89,7 +92,6 @@ async function main() {
   });
 
   // 5. Create mock transactions for Customer 2 (Amit Sharma)
-  // Quarterly compounding, lending rate 18%, deposit rate 8%
   await prisma.transaction.createMany({
     data: [
       {
@@ -97,7 +99,6 @@ async function main() {
         type: TransactionType.DEBIT,
         amount: 20000.0,
         date: new Date('2026-01-10T00:00:00Z'),
-        // Interest starts 10 days later
         interestStartDate: new Date('2026-01-20T00:00:00Z'),
         remarks: 'Cash loan for store expansion',
         isVoided: false,
@@ -112,6 +113,77 @@ async function main() {
         isVoided: false,
       },
     ],
+  });
+
+  // 6. Create mock Items (Stock / Inventory)
+  const item1 = await prisma.item.create({
+    data: {
+      userId: user.id,
+      name: 'Basmati Rice 5kg',
+      qty: 45,
+      minReorderQty: 10,
+      buyPrice: 420.00,
+      sellPrice: 500.00
+    }
+  });
+
+  const item2 = await prisma.item.create({
+    data: {
+      userId: user.id,
+      name: 'Refined Oil 1L',
+      qty: 8,
+      minReorderQty: 15,
+      buyPrice: 110.00,
+      sellPrice: 135.00
+    }
+  });
+  console.log(`Created inventory items: ${item1.name}, ${item2.name}`);
+
+  // 7. Create mock Bills (Invoices)
+  const bill1 = await prisma.bill.create({
+    data: {
+      id: 'INV-2026-001',
+      userId: user.id,
+      customerId: customer1.id,
+      customerName: 'Rajesh Kumar',
+      itemsJson: [
+        { itemId: item1.id, name: 'Basmati Rice 5kg', qty: 2, price: 500.00, total: 1000.00 }
+      ],
+      totalAmount: 1000.00,
+      paymentMode: 'CASH',
+      paidAmount: 1000.00,
+      remainingBalance: 0.00
+    }
+  });
+
+  // 8. Create mock Cashbook entries
+  await prisma.cashbook.createMany({
+    data: [
+      {
+        userId: user.id,
+        billId: bill1.id,
+        type: 'in',
+        amount: 1000.00,
+        remarks: 'Invoice #INV-2026-001 Payment (Rajesh Kumar)'
+      },
+      {
+        userId: user.id,
+        type: 'out',
+        amount: 350.00,
+        remarks: 'Shop Electricity Bill'
+      }
+    ]
+  });
+
+  // 9. Create mock Insurance
+  await prisma.insurance.create({
+    data: {
+      userId: user.id,
+      policyName: 'Kirana Store Safety Shield',
+      provider: 'HDFC ERGO General Insurance',
+      premiumAmount: 4500.00,
+      renewalDate: new Date('2027-03-31T00:00:00Z')
+    }
   });
 
   console.log('Seeding completed successfully!');

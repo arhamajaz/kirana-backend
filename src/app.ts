@@ -9,6 +9,10 @@ import { config } from './config';
 import customerRoutes from './routes/customer.routes';
 import transactionRoutes from './routes/transaction.routes';
 import authRoutes from './routes/auth.routes';
+import itemRoutes from './routes/item.routes';
+import billRoutes from './routes/bill.routes';
+import cashbookRoutes from './routes/cashbook.routes';
+import insuranceRoutes from './routes/insurance.routes';
 
 const app = express();
 
@@ -61,6 +65,11 @@ app.get('/health', (_req, res) => {
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/customers', customerRoutes);
 app.use('/api/v1/transactions', transactionRoutes);
+app.use('/api/v1/items', itemRoutes);
+app.use('/api/v1/bills', billRoutes);
+app.use('/api/v1/cashbook', cashbookRoutes);
+app.use('/api/v1/insurance', insuranceRoutes);
+
 
 // Centralized error handling middleware
 app.use(errorHandler);

@@ -9,13 +9,17 @@ datasource db {
 }
 
 model User {
-  id           String     @id @default(uuid())
-  email        String     @unique @map("email")
-  passwordHash String     @map("password_hash")
-  businessName String     @map("business_name")
-  createdAt    DateTime   @default(now()) @map("created_at")
-  updatedAt    DateTime   @updatedAt @map("updated_at")
-  customers    Customer[]
+  id              String      @id @default(uuid())
+  email           String      @unique @map("email")
+  passwordHash    String      @map("password_hash")
+  businessName    String      @map("business_name")
+  createdAt       DateTime    @default(now()) @map("created_at")
+  updatedAt       DateTime    @updatedAt @map("updated_at")
+  customers       Customer[]
+  items           Item[]
+  bills           Bill[]
+  cashbookEntries Cashbook[]
+  insurance       Insurance?
 
   @@map("users")
 }
@@ -35,6 +39,7 @@ model Customer {
   updatedAt            DateTime             @updatedAt @map("updated_at")
   user                 User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
   transactions         Transaction[]
+  bills                Bill[]
 
   @@index([userId])
   @@index([phoneNumber])
@@ -68,6 +73,77 @@ model Transaction {
   @@map("transactions")
 }
 
+model Item {
+  id             String   @id @default(uuid())
+  userId         String   @map("user_id")
+  name           String   @map("name")
+  qty            Int      @default(0) @map("qty")
+  minReorderQty  Int      @default(5) @map("min_reorder_qty")
+  buyPrice       Decimal  @default(0.00) @map("buy_price") @db.Decimal(10, 2)
+  sellPrice      Decimal  @default(0.00) @map("sell_price") @db.Decimal(10, 2)
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("items")
+}
+
+model Bill {
+  id               String   @id @default(uuid())
+  userId           String   @map("user_id")
+  customerId       String?  @map("customer_id")
+  customerName     String   @map("customer_name")
+  date             DateTime @default(now()) @map("date")
+  itemsJson        Json     @map("items_json")
+  totalAmount      Decimal  @default(0.00) @map("total_amount") @db.Decimal(12, 2)
+  paymentMode      String   @default("CASH") @map("payment_mode")
+  paidAmount       Decimal  @default(0.00) @map("paid_amount") @db.Decimal(12, 2)
+  remainingBalance Decimal  @default(0.00) @map("remaining_balance") @db.Decimal(12, 2)
+  isVoid           Boolean  @default(false) @map("is_void")
+  voidReason       String?  @map("void_reason")
+  voidedAt         DateTime? @map("voided_at")
+  createdAt        DateTime @default(now()) @map("created_at")
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  customer         Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([customerId])
+  @@map("bills")
+}
+
+model Cashbook {
+  id         String    @id @default(uuid())
+  userId     String    @map("user_id")
+  billId     String?   @map("bill_id")
+  date       DateTime  @default(now()) @map("date")
+  type       String    @map("type") // in, out
+  amount     Decimal   @default(0.00) @map("amount") @db.Decimal(12, 2)
+  remarks    String?   @map("remarks")
+  isVoid     Boolean   @default(false) @map("is_void")
+  voidReason String?   @map("void_reason")
+  voidedAt   DateTime? @map("voided_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("cashbook")
+}
+
+model Insurance {
+  id            String    @id @default(uuid())
+  userId        String    @unique @map("user_id")
+  policyName    String?   @map("policy_name")
+  provider      String?   @map("provider")
+  premiumAmount Decimal   @default(0.00) @map("premium_amount") @db.Decimal(10, 2)
+  renewalDate   DateTime? @map("renewal_date")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("insurance")
+}
+
 enum InterestType {
   NO_INTEREST
   SIMPLE
@@ -88,4 +164,3 @@ enum TransactionType {
   DEBIT
   CREDIT
 }
-
