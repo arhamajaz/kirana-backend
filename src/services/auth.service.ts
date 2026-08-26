@@ -55,4 +55,47 @@ export class AuthService {
       },
     };
   }
+
+  /**
+   * Registers a new merchant user and returns signed JWT token.
+   */
+  public async register(email: string, password: string, name?: string, businessName?: string): Promise<LoginResult> {
+    const cleanEmail = email.trim().toLowerCase();
+    const existingUser = await prisma.user.findUnique({
+      where: { email: cleanEmail },
+    });
+
+    if (existingUser) {
+      throw new AppError('A merchant account with this email already exists.', 400);
+    }
+
+    const passwordHash = await bcrypt.hash(password, 10);
+    const user = await prisma.user.create({
+      data: {
+        email: cleanEmail,
+        passwordHash,
+        businessName: businessName || name || 'Kirana Merchant',
+      },
+    });
+
+    const token = jwt.sign(
+      {
+        id: user.id,
+        email: user.email,
+      },
+      config.JWT_SECRET,
+      {
+        expiresIn: config.JWT_EXPIRES_IN as jwt.SignOptions['expiresIn'],
+      },
+    );
+
+    return {
+      token,
+      user: {
+        id: user.id,
+        email: user.email,
+        businessName: user.businessName,
+      },
+    };
+  }
 }

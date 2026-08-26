@@ -19,4 +19,20 @@ export class AuthController {
       next(err);
     }
   };
+
+  /**
+   * Handles merchant registration requests.
+   */
+  public register = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const { email, password, name, businessName } = req.body;
+      const result = await authService.register(email, password, name, businessName);
+      res.status(201).json({
+        status: 'success',
+        data: result,
+      });
+    } catch (err) {
+      next(err);
+    }
+  };
 }

@@ -81,6 +81,35 @@ describe('Auth Module Integration Tests', () => {
     });
   });
 
+  describe('POST /api/v1/auth/register', () => {
+    it('should successfully register a new merchant', async () => {
+      const response = await request(app).post('/api/v1/auth/register').send({
+        email: 'newmerchant@test.com',
+        password: 'password123',
+        name: 'New Merchant',
+        businessName: 'New Kirana Store',
+      });
+
+      expect(response.status).toBe(201);
+      expect(response.body.status).toBe('success');
+      expect(response.body.data.token).toBeDefined();
+      expect(response.body.data.user.email).toBe('newmerchant@test.com');
+      expect(response.body.data.user.businessName).toBe('New Kirana Store');
+    });
+
+    it('should fail to register if email already exists', async () => {
+      const response = await request(app).post('/api/v1/auth/register').send({
+        email: 'merchant@test.com',
+        password: 'password123',
+        businessName: 'Duplicate Store',
+      });
+
+      expect(response.status).toBe(400);
+      expect(response.body.status).toBe('error');
+      expect(response.body.message).toContain('already exists');
+    });
+  });
+
   describe('Auth Middleware Route Protection', () => {
     it('should reject access with 401 when Authorization header is missing', async () => {
       const response = await request(app).get('/api/v1/customers');

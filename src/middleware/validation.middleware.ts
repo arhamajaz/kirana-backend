@@ -56,6 +56,13 @@ export const loginSchema = z.object({
   password: z.string().min(1, 'Password is required'),
 });
 
+export const registerSchema = z.object({
+  email: z.string().trim().toLowerCase().email('Invalid email format'),
+  password: z.string().min(6, 'Password must be at least 6 characters'),
+  name: z.string().trim().optional(),
+  businessName: z.string().trim().optional(),
+});
+
 export const updateCustomerSchema = z
   .object({
     name: z
