@@ -13,6 +13,7 @@ import itemRoutes from './routes/item.routes';
 import billRoutes from './routes/bill.routes';
 import cashbookRoutes from './routes/cashbook.routes';
 import insuranceRoutes from './routes/insurance.routes';
+import reportRoutes from './routes/report.routes';
 
 const app = express();
 
@@ -83,6 +84,7 @@ app.use('/api/v1/items', itemRoutes);
 app.use('/api/v1/bills', billRoutes);
 app.use('/api/v1/cashbook', cashbookRoutes);
 app.use('/api/v1/insurance', insuranceRoutes);
+app.use('/api/v1/reports', reportRoutes);
 
 
 // Centralized error handling middleware
