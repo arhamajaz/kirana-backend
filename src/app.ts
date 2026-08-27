@@ -21,23 +21,33 @@ app.use(helmet());
 app.use(compression());
 
 // Environment-controlled CORS configuration
-if (config.CORS_ALLOWED_ORIGINS === '*') {
-  app.use(cors({ origin: '*' }));
-} else {
-  const allowedOrigins = config.CORS_ALLOWED_ORIGINS.split(',').map((o) => o.trim());
-  app.use(
-    cors({
-      origin: (origin, callback) => {
-        // Allow requests with no origin (e.g. mobile apps, curl, server-to-server, health probes)
-        if (!origin || allowedOrigins.includes(origin)) {
-          callback(null, true);
-        } else {
-          callback(new Error(`CORS Error: Origin ${origin} not allowed`));
-        }
-      },
-    }),
-  );
-}
+const isAllowedOrigin = (origin: string | undefined): boolean => {
+  if (!origin) return true; // Allow non-browser / server-to-server requests
+  if (config.CORS_ALLOWED_ORIGINS === '*') return true;
+  
+  const allowed = config.CORS_ALLOWED_ORIGINS.split(',').map((o) => o.trim());
+  if (allowed.includes(origin)) return true;
+  
+  // Support Vercel deployment domain patterns (*.vercel.app)
+  if (origin.endsWith('.vercel.app') || origin.startsWith('http://localhost:')) return true;
+  
+  return false;
+};
+
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      if (isAllowedOrigin(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error(`CORS Error: Origin ${origin} not allowed`));
+      }
+    },
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept']
+  })
+);
 
 app.use(express.json({ limit: '10kb' }));
 app.use(express.urlencoded({ extended: true, limit: '10kb' }));
@@ -52,14 +62,18 @@ app.use(
   }),
 );
 
-// Health check endpoint
-app.get('/health', (_req, res) => {
+// Cold-Start Mitigation & Health check endpoints
+const healthHandler = (_req: express.Request, res: express.Response) => {
   res.status(200).json({
     status: 'success',
-    message: 'Server is healthy',
+    message: 'Malwa Ledger Pro API Server is healthy and active',
     timestamp: new Date().toISOString(),
   });
-});
+};
+
+app.get('/health', healthHandler);
+app.get('/api/health', healthHandler);
+app.get('/api/v1/health', healthHandler);
 
 // API routes
 app.use('/api/v1/auth', authRoutes);
