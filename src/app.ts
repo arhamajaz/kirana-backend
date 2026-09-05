@@ -15,6 +15,8 @@ import cashbookRoutes from './routes/cashbook.routes';
 import insuranceRoutes from './routes/insurance.routes';
 import reportRoutes from './routes/report.routes';
 
+import { prisma } from './config/database';
+
 const app = express();
 
 // Security & Performance Middleware
@@ -64,12 +66,23 @@ app.use(
 );
 
 // Cold-Start Mitigation & Health check endpoints
-const healthHandler = (_req: express.Request, res: express.Response) => {
-  res.status(200).json({
-    status: 'success',
-    message: 'Malwa Ledger Pro API Server is healthy and active',
-    timestamp: new Date().toISOString(),
-  });
+const healthHandler = async (_req: express.Request, res: express.Response) => {
+  try {
+    // Force a tiny query to keep the Supabase database active
+    await prisma.user.findFirst({ select: { id: true } });
+
+    res.status(200).json({
+      status: 'success',
+      message: 'Malwa Ledger Pro API Server and Database are healthy.',
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    logger.error(`Supabase database ping failed: ${error instanceof Error ? error.message : String(error)}`);
+    res.status(500).json({
+      status: 'error',
+      message: 'Database unreachable',
+    });
+  }
 };
 
 app.get('/health', healthHandler);
