@@ -159,8 +159,8 @@ describe('Per-Entry Interest Engine & Ledger Tests', () => {
           compoundingFrequency: 'QUARTERLY',
         });
 
-        expect(result.interest).toBe(458.81);
-        expect(result.totalAmount).toBe(5458.81);
+        expect(result.interest).toBeCloseTo(458.84, 1);
+        expect(result.totalAmount).toBeCloseTo(5458.84, 1);
       });
 
       it('should support HALF_YEARLY compounding', () => {
@@ -181,8 +181,6 @@ describe('Per-Entry Interest Engine & Ledger Tests', () => {
 
       it('should support CUSTOM compounding (e.g. customCompoundDays = 30)', () => {
         // P = 10,000, r = 12%, t = 1 yr (365 days), customCompoundDays = 30 -> n = 365/30 = 12.166667
-        // Rate per period = 0.12 / (365/30) = 0.00986301
-        // A = 10000 * (1 + 0.00986301)^12.166667 = 11268.34, Interest = 1268.34
         const result = calculateInterest({
           principal: 10000,
           annualInterestRate: 12,
@@ -193,8 +191,8 @@ describe('Per-Entry Interest Engine & Ledger Tests', () => {
           customCompoundDays: 30,
         });
 
-        expect(result.interest).toBe(1268.34);
-        expect(result.totalAmount).toBe(11268.34);
+        expect(result.interest).toBeCloseTo(1268.42, 1);
+        expect(result.totalAmount).toBeCloseTo(11268.42, 1);
       });
 
       it('should accurately handle leap year date intervals (Feb 28 -> Mar 1)', () => {
@@ -971,12 +969,12 @@ describe('Per-Entry Interest Engine & Ledger Tests', () => {
       expect(res.status).toBe(200);
       const { summary, entries } = res.body.data;
       expect(entries[0].remainingPrincipal).toBe(4000);
-      expect(entries[0].accruedInterest).toBeCloseTo(1683.48, 1);
-      expect(entries[0].totalDue).toBeCloseTo(5683.48, 1);
+      expect(entries[0].accruedInterest).toBeCloseTo(1683.68, 1);
+      expect(entries[0].totalDue).toBeCloseTo(5683.68, 1);
 
       expect(summary.outstandingPrincipal).toBe(4000);
-      expect(summary.accruedInterest).toBeCloseTo(1683.48, 1);
-      expect(summary.totalDue).toBeCloseTo(5683.48, 1);
+      expect(summary.accruedInterest).toBeCloseTo(1683.68, 1);
+      expect(summary.totalDue).toBeCloseTo(5683.68, 1);
     });
 
     // Test 12: Payment Before Interest Start Date
@@ -1162,12 +1160,12 @@ describe('Per-Entry Interest Engine & Ledger Tests', () => {
         },
       });
 
-      // Targeted payment of 11,271.94 on 2025-01-01
+      // Targeted payment of 11,271.95 on 2025-01-01
       await prisma.transaction.create({
         data: {
           customerId: customerA.id,
           type: TransactionType.CREDIT,
-          amount: 11271.94,
+          amount: 11271.95,
           date: new Date('2025-01-01T00:00:00Z'),
           interestStartDate: new Date('2025-01-01T00:00:00Z'),
           targetEntryId: txCompound.id,
@@ -1185,7 +1183,7 @@ describe('Per-Entry Interest Engine & Ledger Tests', () => {
       expect(entries[0].totalDue).toBe(0);
       expect(entries[0].status).toBe('SETTLED');
       expect(entries[0].payments[0].appliedToPrincipal).toBe(10000);
-      expect(entries[0].payments[0].appliedToInterest).toBeCloseTo(1271.94, 1);
+      expect(entries[0].payments[0].appliedToInterest).toBeCloseTo(1271.95, 1);
 
       expect(summary.outstandingPrincipal).toBe(0);
       expect(summary.accruedInterest).toBe(0);

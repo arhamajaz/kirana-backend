@@ -109,16 +109,21 @@ export function calculateInterest(input: InterestCalculatorInput): InterestCalcu
       break;
   }
 
-  const ratePerPeriod = annualInterestRate / 100.0 / n;
-  const totalPeriods = n * elapsedYears;
-  const totalAmount = principal * Math.pow(1 + ratePerPeriod, totalPeriods);
-  const interest = totalAmount - principal;
+  const periodDays = 365.0 / n;
+  const periodRate = annualInterestRate / 100.0 / n;
+  const fullPeriods = Math.floor(elapsedDays / periodDays);
+  const remainingDays = elapsedDays - (fullPeriods * periodDays);
+
+  const amountAfterFull = principal * Math.pow(1 + periodRate, fullPeriods);
+  const finalTotalAmount = amountAfterFull + (amountAfterFull * periodRate * (remainingDays / periodDays));
+  const interest = finalTotalAmount - principal;
   const roundedInterest = Math.round((interest + Number.EPSILON) * 100) / 100;
+  const roundedTotalAmount = Math.round((principal + roundedInterest + Number.EPSILON) * 100) / 100;
 
   return {
     elapsedDays,
     elapsedYears,
     interest: roundedInterest,
-    totalAmount: Math.round((principal + roundedInterest + Number.EPSILON) * 100) / 100,
+    totalAmount: roundedTotalAmount,
   };
 }
