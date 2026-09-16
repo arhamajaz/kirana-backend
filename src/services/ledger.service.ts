@@ -8,6 +8,10 @@ import {
   CompoundingFrequency,
   TransactionType,
 } from '../generated/prisma/client';
+import { calculateLedger, LedgerTransaction, LedgerOptions, LedgerCalculationResult } from '../utils/ledgerEngine';
+
+export { calculateLedger, LedgerTransaction, LedgerOptions, LedgerCalculationResult };
+
 
 export interface EntryPaymentAllocation {
   creditId: string;
