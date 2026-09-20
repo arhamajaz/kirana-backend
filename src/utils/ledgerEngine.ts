@@ -19,10 +19,21 @@ export interface LedgerOptions {
   initialAccruedInterest?: number;
 }
 
+export interface BreakdownEntry {
+  startDate: Date | string;
+  endDate: Date | string;
+  daysElapsed: number;
+  activePrincipal: number;
+  interestGenerated: number;
+  rateApplied: number;
+  isAdvance?: boolean;
+}
+
 export interface LedgerCalculationResult {
   currentPrincipal: number;
   currentAdvance: number;
   totalAccruedInterest: number;
+  breakdownLog: BreakdownEntry[];
 }
 
 export function roundMoney(value: number): number {
@@ -43,6 +54,7 @@ export function calculateLedger(
   let principalDue = 0;
   let advanceBalance = 0;
   let accruedInterest = 0;
+  const breakdownLog: BreakdownEntry[] = [];
 
   if (typeof rateOrOptions === 'number') {
     defaultRate = rateOrOptions;
@@ -99,10 +111,31 @@ export function calculateLedger(
       );
 
       // Rule: If advanceBalance > 0, newInterest = 0 (Advance balances NEVER accrue interest)
-      if (principalDue > 0 && advanceBalance === 0 && exactDays > 0) {
-        const elapsedMonths = exactDays / 30; // Strict 30-day month divisor
-        const newInterest = principalDue * (activeRate / 100) * elapsedMonths;
-        accruedInterest = roundMoney(accruedInterest + newInterest);
+      if (exactDays > 0) {
+        if (principalDue > 0 && advanceBalance === 0) {
+          const elapsedMonths = exactDays / 30; // Strict 30-day month divisor
+          const newInterest = roundMoney(principalDue * (activeRate / 100) * elapsedMonths);
+          accruedInterest = roundMoney(accruedInterest + newInterest);
+          breakdownLog.push({
+            startDate: new Date(lastDate),
+            endDate: new Date(txDate),
+            daysElapsed: exactDays,
+            activePrincipal: principalDue,
+            interestGenerated: newInterest,
+            rateApplied: activeRate,
+            isAdvance: false,
+          });
+        } else if (advanceBalance > 0) {
+          breakdownLog.push({
+            startDate: new Date(lastDate),
+            endDate: new Date(txDate),
+            daysElapsed: exactDays,
+            activePrincipal: 0,
+            interestGenerated: 0,
+            rateApplied: 0,
+            isAdvance: true,
+          });
+        }
       }
     }
 
@@ -151,10 +184,31 @@ export function calculateLedger(
         Math.round((asOfDate.getTime() - lastDate.getTime()) / (1000 * 60 * 60 * 24))
       );
 
-      if (principalDue > 0 && advanceBalance === 0 && exactDays > 0) {
-        const elapsedMonths = exactDays / 30;
-        const newInterest = principalDue * (activeRate / 100) * elapsedMonths;
-        accruedInterest = roundMoney(accruedInterest + newInterest);
+      if (exactDays > 0) {
+        if (principalDue > 0 && advanceBalance === 0) {
+          const elapsedMonths = exactDays / 30;
+          const newInterest = roundMoney(principalDue * (activeRate / 100) * elapsedMonths);
+          accruedInterest = roundMoney(accruedInterest + newInterest);
+          breakdownLog.push({
+            startDate: new Date(lastDate),
+            endDate: new Date(asOfDate),
+            daysElapsed: exactDays,
+            activePrincipal: principalDue,
+            interestGenerated: newInterest,
+            rateApplied: activeRate,
+            isAdvance: false,
+          });
+        } else if (advanceBalance > 0) {
+          breakdownLog.push({
+            startDate: new Date(lastDate),
+            endDate: new Date(asOfDate),
+            daysElapsed: exactDays,
+            activePrincipal: 0,
+            interestGenerated: 0,
+            rateApplied: 0,
+            isAdvance: true,
+          });
+        }
       }
     }
   }
@@ -164,5 +218,6 @@ export function calculateLedger(
     currentPrincipal: roundMoney(principalDue),
     currentAdvance: roundMoney(advanceBalance),
     totalAccruedInterest: roundMoney(accruedInterest),
+    breakdownLog,
   };
 }
