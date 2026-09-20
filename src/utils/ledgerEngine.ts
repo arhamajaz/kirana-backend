@@ -9,10 +9,15 @@ export interface LedgerTransaction {
   is_voided?: boolean;
   interestRate?: number | string | null;
   rate?: number | string | null;
+  rateUnit?: 'monthly' | 'yearly' | 'annual' | string;
+  isAnnual?: boolean;
 }
 
 export interface LedgerOptions {
   interestRatePerMonth?: number;
+  interestRatePerYear?: number;
+  rateUnit?: 'monthly' | 'yearly' | 'annual' | string;
+  isAnnual?: boolean;
   asOfDate?: Date | string | null;
   initialPrincipal?: number;
   initialAdvance?: number;
@@ -25,7 +30,9 @@ export interface BreakdownEntry {
   daysElapsed: number;
   activePrincipal: number;
   interestGenerated: number;
-  rateApplied: number;
+  interestAccrued: number;
+  rateApplied: number | string;
+  monthlyRate?: number;
   isAdvance?: boolean;
 }
 
@@ -50,6 +57,7 @@ export function calculateLedger(
   asOfDateParam: Date | string | null = null
 ): LedgerCalculationResult {
   let defaultRate = 0;
+  let isYearlyRate = false;
   let asOfDate: Date | null = null;
   let principalDue = 0;
   let advanceBalance = 0;
@@ -62,7 +70,13 @@ export function calculateLedger(
       asOfDate = new Date(asOfDateParam);
     }
   } else if (rateOrOptions && typeof rateOrOptions === 'object') {
-    defaultRate = rateOrOptions.interestRatePerMonth ?? 0;
+    if (rateOrOptions.interestRatePerYear !== undefined) {
+      defaultRate = rateOrOptions.interestRatePerYear;
+      isYearlyRate = true;
+    } else {
+      defaultRate = rateOrOptions.interestRatePerMonth ?? 0;
+      isYearlyRate = rateOrOptions.rateUnit === 'yearly' || rateOrOptions.rateUnit === 'annual' || rateOrOptions.isAnnual === true;
+    }
     principalDue = rateOrOptions.initialPrincipal ?? 0;
     advanceBalance = rateOrOptions.initialAdvance ?? 0;
     accruedInterest = rateOrOptions.initialAccruedInterest ?? 0;
@@ -96,7 +110,8 @@ export function calculateLedger(
 
   // Directive 1: Core State Machine Variables
   let lastDate: Date | null = null;
-  let activeRate = defaultRate;
+  let rawActiveRate = defaultRate;
+  let activeIsYearly = isYearlyRate;
 
   // Chronological Loop per Transaction
   for (const tx of sortedTxns) {
@@ -112,9 +127,14 @@ export function calculateLedger(
 
       // Rule: If advanceBalance > 0, newInterest = 0 (Advance balances NEVER accrue interest)
       if (exactDays > 0) {
+        const effectiveMonthlyRate = activeIsYearly ? rawActiveRate / 12 : rawActiveRate;
+        const rateLabel = activeIsYearly 
+          ? `${roundMoney(effectiveMonthlyRate)}% monthly (${rawActiveRate}% yearly)` 
+          : `${rawActiveRate}% monthly`;
+
         if (principalDue > 0 && advanceBalance === 0) {
           const elapsedMonths = exactDays / 30; // Strict 30-day month divisor
-          const newInterest = roundMoney(principalDue * (activeRate / 100) * elapsedMonths);
+          const newInterest = roundMoney(principalDue * (effectiveMonthlyRate / 100) * elapsedMonths);
           accruedInterest = roundMoney(accruedInterest + newInterest);
           breakdownLog.push({
             startDate: new Date(lastDate),
@@ -122,7 +142,9 @@ export function calculateLedger(
             daysElapsed: exactDays,
             activePrincipal: principalDue,
             interestGenerated: newInterest,
-            rateApplied: activeRate,
+            interestAccrued: newInterest,
+            rateApplied: rateLabel,
+            monthlyRate: effectiveMonthlyRate,
             isAdvance: false,
           });
         } else if (advanceBalance > 0) {
@@ -132,7 +154,9 @@ export function calculateLedger(
             daysElapsed: exactDays,
             activePrincipal: 0,
             interestGenerated: 0,
-            rateApplied: 0,
+            interestAccrued: 0,
+            rateApplied: '0%',
+            monthlyRate: 0,
             isAdvance: true,
           });
         }
@@ -142,7 +166,12 @@ export function calculateLedger(
     // Edge Case 43: Mid-stream Rate Change per Transaction override
     const txRate = tx.interestRate ?? tx.rate;
     if (txRate !== undefined && txRate !== null && !isNaN(Number(txRate))) {
-      activeRate = Number(txRate);
+      rawActiveRate = Number(txRate);
+      if (tx.rateUnit === 'yearly' || tx.rateUnit === 'annual' || tx.isAnnual) {
+        activeIsYearly = true;
+      } else if (tx.rateUnit === 'monthly') {
+        activeIsYearly = false;
+      }
     }
 
     // Step B: Apply Transaction Amounts (Strict Settlement Order)
@@ -185,9 +214,14 @@ export function calculateLedger(
       );
 
       if (exactDays > 0) {
+        const effectiveMonthlyRate = activeIsYearly ? rawActiveRate / 12 : rawActiveRate;
+        const rateLabel = activeIsYearly 
+          ? `${roundMoney(effectiveMonthlyRate)}% monthly (${rawActiveRate}% yearly)` 
+          : `${rawActiveRate}% monthly`;
+
         if (principalDue > 0 && advanceBalance === 0) {
           const elapsedMonths = exactDays / 30;
-          const newInterest = roundMoney(principalDue * (activeRate / 100) * elapsedMonths);
+          const newInterest = roundMoney(principalDue * (effectiveMonthlyRate / 100) * elapsedMonths);
           accruedInterest = roundMoney(accruedInterest + newInterest);
           breakdownLog.push({
             startDate: new Date(lastDate),
@@ -195,7 +229,9 @@ export function calculateLedger(
             daysElapsed: exactDays,
             activePrincipal: principalDue,
             interestGenerated: newInterest,
-            rateApplied: activeRate,
+            interestAccrued: newInterest,
+            rateApplied: rateLabel,
+            monthlyRate: effectiveMonthlyRate,
             isAdvance: false,
           });
         } else if (advanceBalance > 0) {
@@ -205,7 +241,9 @@ export function calculateLedger(
             daysElapsed: exactDays,
             activePrincipal: 0,
             interestGenerated: 0,
-            rateApplied: 0,
+            interestAccrued: 0,
+            rateApplied: '0%',
+            monthlyRate: 0,
             isAdvance: true,
           });
         }
