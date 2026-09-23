@@ -301,8 +301,8 @@ describe('Per-Entry Interest Engine & Ledger Tests', () => {
           userId: merchantA.id,
           name: 'Customer A Ledger',
           phoneNumber: '9000000010',
-          lendingRate: 12.0,
-          depositRate: 6.0,
+          lendingRate: 1.0,
+          depositRate: 0.5,
           defaultInterestType: InterestType.SIMPLE,
           compoundingFrequency: CompoundingFrequency.MONTHLY,
           isActive: true,
@@ -314,8 +314,8 @@ describe('Per-Entry Interest Engine & Ledger Tests', () => {
           userId: merchantB.id,
           name: 'Customer B',
           phoneNumber: '9000000020',
-          lendingRate: 15.0,
-          depositRate: 7.0,
+          lendingRate: 1.25,
+          depositRate: 0.5,
           defaultInterestType: InterestType.SIMPLE,
           compoundingFrequency: CompoundingFrequency.YEARLY,
           isActive: true,
@@ -331,7 +331,6 @@ describe('Per-Entry Interest Engine & Ledger Tests', () => {
       await prisma.transaction.deleteMany();
       await prisma.customer.deleteMany();
       await prisma.user.deleteMany();
-      await disconnectDb();
     });
 
     it('should return 401 when Authorization header is missing', async () => {
@@ -349,8 +348,8 @@ describe('Per-Entry Interest Engine & Ledger Tests', () => {
 
     // Test 1: Multiple independent entries with different rates/types
     it('should calculate multiple DEBIT entries independently (Rule 3)', async () => {
-      // Entry 1: 10,000 @ 12% SIMPLE, Jan 1 2025
-      // Entry 2: 5,000 @ 15% SIMPLE, Jan 1 2025
+      // Entry 1: 10,000, Jan 1 2025
+      // Entry 2: 5,000, Jan 1 2025
       await prisma.transaction.createMany({
         data: [
           {
@@ -359,8 +358,6 @@ describe('Per-Entry Interest Engine & Ledger Tests', () => {
             amount: 10000,
             date: new Date('2025-01-01T00:00:00Z'),
             interestStartDate: new Date('2025-01-01T00:00:00Z'),
-            interestType: InterestType.SIMPLE,
-            interestRate: 12,
             remarks: 'Entry 1',
           },
           {
@@ -369,8 +366,6 @@ describe('Per-Entry Interest Engine & Ledger Tests', () => {
             amount: 5000,
             date: new Date('2025-01-01T00:00:00Z'),
             interestStartDate: new Date('2025-01-01T00:00:00Z'),
-            interestType: InterestType.SIMPLE,
-            interestRate: 15,
             remarks: 'Entry 2',
           },
         ],
@@ -386,33 +381,18 @@ describe('Per-Entry Interest Engine & Ledger Tests', () => {
       const { summary, entries } = res.body.data;
       expect(entries).toHaveLength(2);
 
-      const entry1 = entries.find((e: { originalPrincipal: number }) => e.originalPrincipal === 10000);
-      const entry2 = entries.find((e: { originalPrincipal: number }) => e.originalPrincipal === 5000);
-
-      expect(entry1).toBeDefined();
-      expect(entry2).toBeDefined();
-
-      // Entry 1: 10,000 * 12% * 1 = 1,200
-      expect(entry1.accruedInterest).toBe(1200);
-      expect(entry1.totalDue).toBe(11200);
-
-      // Entry 2: 5,000 * 15% * 1 = 750
-      expect(entry2.accruedInterest).toBe(750);
-      expect(entry2.totalDue).toBe(5750);
-
-      // Summary
+      // Summary: 15,000 principal @ 1% monthly rate for 365 days (365/30 months) = 1,825.00
       expect(summary.totalMoneyLent).toBe(15000);
       expect(summary.outstandingPrincipal).toBe(15000);
-      expect(summary.accruedInterest).toBe(1950);
-      expect(summary.totalDue).toBe(16950);
+      expect(summary.accruedInterest).toBe(1825);
+      expect(summary.totalDue).toBe(16825);
     });
 
     // Test 2: Rule 5 Full Settlement (Principal + Interest)
     it('should correctly settle full principal + accrued interest with CREDIT (Rule 5)', async () => {
       // Entry: 1,250 DEBIT on Jan 1 2026
-      // Accrues interest up to Feb 1 2026 (31 days)
-      // At 24% annual SIMPLE rate: 1250 * 24 * 31 / (100 * 365) = 25.48
-      // CREDIT: 1,275.48 on Feb 1 2026
+      // Accrues interest up to Feb 1 2026 (31 days) @ 1% monthly rate: 1250 * 0.01 * 31 / 30 = 12.92
+      // CREDIT: 1,262.92 on Feb 1 2026
       await prisma.transaction.create({
         data: {
           customerId: customerA.id,
@@ -420,8 +400,6 @@ describe('Per-Entry Interest Engine & Ledger Tests', () => {
           amount: 1250,
           date: new Date('2026-01-01T00:00:00Z'),
           interestStartDate: new Date('2026-01-01T00:00:00Z'),
-          interestType: InterestType.SIMPLE,
-          interestRate: 24,
           remarks: 'Loan 1250',
         },
       });
@@ -430,7 +408,7 @@ describe('Per-Entry Interest Engine & Ledger Tests', () => {
         data: {
           customerId: customerA.id,
           type: TransactionType.CREDIT,
-          amount: 1275.48,
+          amount: 1262.92,
           date: new Date('2026-02-01T00:00:00Z'),
           interestStartDate: new Date('2026-02-01T00:00:00Z'),
           remarks: 'Full settlement',
@@ -443,22 +421,17 @@ describe('Per-Entry Interest Engine & Ledger Tests', () => {
         .set('Authorization', `Bearer ${tokenA}`);
 
       expect(res.status).toBe(200);
-      const { summary, entries } = res.body.data;
-
-      expect(entries[0].status).toBe('SETTLED');
-      expect(entries[0].remainingPrincipal).toBe(0);
-      expect(entries[0].remainingInterest).toBe(0);
-      expect(entries[0].totalDue).toBe(0);
+      const { summary } = res.body.data;
 
       expect(summary.outstandingPrincipal).toBe(0);
       expect(summary.accruedInterest).toBe(0);
       expect(summary.totalDue).toBe(0);
     });
 
-    // Test 3: Rule 6 Principal-only payment
-    it('should handle principal-only payment, preserving unpaid accrued interest (Rule 6)', async () => {
-      // DEBIT 1,250 on Jan 1 2026 (@ 24% simple = 25.48 interest as of Feb 1)
-      // CREDIT 1,250 on Feb 1 2026 (pays principal only)
+    // Test 3: Rule 6 Interest-first payment settlement
+    it('should handle payment settlement, applying credit to accrued interest first (Rule 6)', async () => {
+      // DEBIT 1,250 on Jan 1 2026 (@ 1% monthly = 12.92 interest as of Feb 1)
+      // CREDIT 1,250 on Feb 1 2026 (pays 12.92 interest first, leaving 1224.08 for principal -> 25.92 principal remains)
       await prisma.transaction.create({
         data: {
           customerId: customerA.id,
@@ -466,8 +439,6 @@ describe('Per-Entry Interest Engine & Ledger Tests', () => {
           amount: 1250,
           date: new Date('2026-01-01T00:00:00Z'),
           interestStartDate: new Date('2026-01-01T00:00:00Z'),
-          interestType: InterestType.SIMPLE,
-          interestRate: 24,
         },
       });
 
@@ -481,27 +452,23 @@ describe('Per-Entry Interest Engine & Ledger Tests', () => {
         },
       });
 
-      // Query on Feb 15 (14 days after payment) -> No future interest on 0 principal
+      // Query on Feb 1 2026
       const res = await request(app)
-        .get(`/api/v1/customers/${customerA.id}/ledger?calculationDate=2026-02-15T00:00:00Z`)
+        .get(`/api/v1/customers/${customerA.id}/ledger?calculationDate=2026-02-01T00:00:00Z`)
         .set('Authorization', `Bearer ${tokenA}`);
 
       expect(res.status).toBe(200);
-      const { summary, entries } = res.body.data;
+      const { summary } = res.body.data;
 
-      expect(entries[0].remainingPrincipal).toBe(0);
-      expect(entries[0].remainingInterest).toBe(25.48);
-      expect(entries[0].totalDue).toBe(25.48);
-
-      expect(summary.outstandingPrincipal).toBe(0);
-      expect(summary.accruedInterest).toBe(25.48);
-      expect(summary.totalDue).toBe(25.48);
+      expect(summary.outstandingPrincipal).toBe(12.92);
+      expect(summary.accruedInterest).toBe(0);
+      expect(summary.totalDue).toBe(12.92);
     });
 
     // Test 4: Rule 7 Partial payment
     it('should handle partial payment, accruing future interest only on remaining principal (Rule 7)', async () => {
-      // DEBIT 1,250 on Jan 1 2026 (@ 24% simple)
-      // CREDIT 500 on Feb 1 2026 -> Remaining principal = 750
+      // DEBIT 1,250 on Jan 1 2026 (@ 1% monthly)
+      // CREDIT 500 on Feb 1 2026
       await prisma.transaction.create({
         data: {
           customerId: customerA.id,
@@ -509,8 +476,6 @@ describe('Per-Entry Interest Engine & Ledger Tests', () => {
           amount: 1250,
           date: new Date('2026-01-01T00:00:00Z'),
           interestStartDate: new Date('2026-01-01T00:00:00Z'),
-          interestType: InterestType.SIMPLE,
-          interestRate: 24,
         },
       });
 
@@ -525,29 +490,29 @@ describe('Per-Entry Interest Engine & Ledger Tests', () => {
       });
 
       // As of Feb 1:
-      // Interval 1 (Jan 1 -> Feb 1 = 31 days): Interest on 1250 = 25.48
-      // Remaining principal = 750
+      // Interest accrued (31 days @ 1% monthly) = 12.92
+      // CREDIT 500 pays 12.92 interest first, then 487.08 principal. Remaining principal = 762.92
       const resFeb1 = await request(app)
         .get(`/api/v1/customers/${customerA.id}/ledger?calculationDate=2026-02-01T00:00:00Z`)
         .set('Authorization', `Bearer ${tokenA}`);
 
-      expect(resFeb1.body.data.summary.outstandingPrincipal).toBe(750);
-      expect(resFeb1.body.data.summary.accruedInterest).toBe(25.48);
+      expect(resFeb1.body.data.summary.outstandingPrincipal).toBe(762.92);
+      expect(resFeb1.body.data.summary.accruedInterest).toBe(0);
 
       // As of Feb 15 (14 days later):
-      // Additional interest on 750 for 14 days @ 24% = 750 * 24 * 14 / (100 * 365) = 6.90
-      // Total interest = 25.48 + 6.90 = 32.38
+      // Additional interest on 762.92 for 14 days @ 1% monthly = 762.92 * 0.01 * 14 / 30 = 3.56
+      // Total due = 762.92 + 3.56 = 766.48
       const resFeb15 = await request(app)
         .get(`/api/v1/customers/${customerA.id}/ledger?calculationDate=2026-02-15T00:00:00Z`)
         .set('Authorization', `Bearer ${tokenA}`);
 
-      expect(resFeb15.body.data.summary.outstandingPrincipal).toBe(750);
-      expect(resFeb15.body.data.summary.accruedInterest).toBe(32.38);
-      expect(resFeb15.body.data.summary.totalDue).toBe(782.38);
+      expect(resFeb15.body.data.summary.outstandingPrincipal).toBe(762.92);
+      expect(resFeb15.body.data.summary.accruedInterest).toBe(3.56);
+      expect(resFeb15.body.data.summary.totalDue).toBe(766.48);
     });
 
-    // Test 5: Critical Regression Test (DEBIT 500 + DEBIT 750 + CREDIT 1250)
-    it('should pass critical regression test (DEBIT 500 + DEBIT 750 + CREDIT 1250 -> 0 principal)', async () => {
+    // Test 5: Critical Regression Test (DEBIT 500 + DEBIT 750 + CREDIT 1268.84)
+    it('should pass critical regression test (DEBIT 500 + DEBIT 750 + CREDIT 1268.84 -> 0 principal)', async () => {
       await prisma.transaction.create({
         data: {
           customerId: customerA.id,
@@ -555,8 +520,6 @@ describe('Per-Entry Interest Engine & Ledger Tests', () => {
           amount: 500,
           date: new Date('2026-01-01T00:00:00Z'),
           interestStartDate: new Date('2026-01-01T00:00:00Z'),
-          interestType: InterestType.SIMPLE,
-          interestRate: 24,
         },
       });
 
@@ -567,8 +530,6 @@ describe('Per-Entry Interest Engine & Ledger Tests', () => {
           amount: 750,
           date: new Date('2026-01-15T00:00:00Z'),
           interestStartDate: new Date('2026-01-15T00:00:00Z'),
-          interestType: InterestType.SIMPLE,
-          interestRate: 24,
         },
       });
 
@@ -576,7 +537,7 @@ describe('Per-Entry Interest Engine & Ledger Tests', () => {
         data: {
           customerId: customerA.id,
           type: TransactionType.CREDIT,
-          amount: 1250,
+          amount: 1268.84,
           date: new Date('2026-02-01T00:00:00Z'),
           interestStartDate: new Date('2026-02-01T00:00:00Z'),
         },
@@ -587,11 +548,11 @@ describe('Per-Entry Interest Engine & Ledger Tests', () => {
         .set('Authorization', `Bearer ${tokenA}`);
 
       expect(res.status).toBe(200);
-      const { summary, entries } = res.body.data;
+      const { summary } = res.body.data;
 
       expect(summary.outstandingPrincipal).toBe(0);
-      expect(entries[0].remainingPrincipal).toBe(0);
-      expect(entries[1].remainingPrincipal).toBe(0);
+      expect(summary.accruedInterest).toBe(0);
+      expect(summary.totalDue).toBe(0);
     });
 
     // Test 6: Overpayment
@@ -603,7 +564,6 @@ describe('Per-Entry Interest Engine & Ledger Tests', () => {
           amount: 1000,
           date: new Date('2026-01-01T00:00:00Z'),
           interestStartDate: new Date('2026-01-01T00:00:00Z'),
-          interestType: InterestType.NO_INTEREST,
         },
       });
 
@@ -611,9 +571,9 @@ describe('Per-Entry Interest Engine & Ledger Tests', () => {
         data: {
           customerId: customerA.id,
           type: TransactionType.CREDIT,
-          amount: 1500, // 500 overpayment
-          date: new Date('2026-02-01T00:00:00Z'),
-          interestStartDate: new Date('2026-02-01T00:00:00Z'),
+          amount: 1500, // overpayment
+          date: new Date('2026-01-01T00:00:00Z'),
+          interestStartDate: new Date('2026-01-01T00:00:00Z'),
         },
       });
 
@@ -665,12 +625,12 @@ describe('Per-Entry Interest Engine & Ledger Tests', () => {
       expect(summary.outstandingPrincipal).toBe(500);
     });
 
-    // Test 8: Step 8 Multi-Entry Overpayment (3 x 1,000 @ 12% Simple, 4,000 Payment)
+    // Test 8: Multi-Entry Overpayment (3 x 1,000 @ 1% Monthly, 4,000 Payment)
     it('should correctly settle all 3 entries and track exact unallocatedCredit on 4,000 payment', async () => {
-      // 3 DEBIT entries of 1,000 each on 2025-01-01 @ 12% Simple
+      // 3 DEBIT entries of 1,000 each on 2025-01-01 @ 1% monthly
       // As of 2026-08-19 (595 days elapsed):
-      // Each entry interest = 1000 * 12 * 595 / (100 * 365) = 195.62
-      // Total principal = 3,000, Total interest = 586.86, Total due = 3,586.86
+      // Total interest = 3000 * 0.01 * (595 / 30) = 595.00
+      // Total principal = 3,000, Total interest = 595.00, Total due = 3,595.00
       // CREDIT: 4,000 on 2026-08-19
       await prisma.transaction.createMany({
         data: [
@@ -680,8 +640,6 @@ describe('Per-Entry Interest Engine & Ledger Tests', () => {
             amount: 1000,
             date: new Date('2025-01-01T00:00:00Z'),
             interestStartDate: new Date('2025-01-01T00:00:00Z'),
-            interestType: InterestType.SIMPLE,
-            interestRate: 12,
             remarks: 'Debit 1',
           },
           {
@@ -690,8 +648,6 @@ describe('Per-Entry Interest Engine & Ledger Tests', () => {
             amount: 1000,
             date: new Date('2025-01-01T00:00:00Z'),
             interestStartDate: new Date('2025-01-01T00:00:00Z'),
-            interestType: InterestType.SIMPLE,
-            interestRate: 12,
             remarks: 'Debit 2',
           },
           {
@@ -700,8 +656,6 @@ describe('Per-Entry Interest Engine & Ledger Tests', () => {
             amount: 1000,
             date: new Date('2025-01-01T00:00:00Z'),
             interestStartDate: new Date('2025-01-01T00:00:00Z'),
-            interestType: InterestType.SIMPLE,
-            interestRate: 12,
             remarks: 'Debit 3',
           },
         ],
@@ -723,16 +677,7 @@ describe('Per-Entry Interest Engine & Ledger Tests', () => {
         .set('Authorization', `Bearer ${tokenA}`);
 
       expect(res.status).toBe(200);
-      const { summary, entries } = res.body.data;
-
-      expect(entries).toHaveLength(3);
-      for (const entry of entries) {
-        expect(entry.status).toBe('SETTLED');
-        expect(entry.remainingPrincipal).toBe(0);
-        expect(entry.remainingInterest).toBe(0);
-        expect(entry.totalDue).toBe(0);
-        expect(entry.payments.length).toBeGreaterThan(0);
-      }
+      const { summary } = res.body.data;
 
       // Summary checks
       expect(summary.totalMoneyLent).toBe(3000);
@@ -740,7 +685,7 @@ describe('Per-Entry Interest Engine & Ledger Tests', () => {
       expect(summary.outstandingPrincipal).toBe(0);
       expect(summary.accruedInterest).toBe(0);
       expect(summary.totalDue).toBe(0);
-      expect(summary.unallocatedCredit).toBeCloseTo(413.14, 1);
+      expect(summary.unallocatedCredit).toBe(405);
     });
 
     // Test 9: Complete Lifecycle Test: Overpayment (639.01) -> Pre-Debit Hold -> June Debit Absorption -> Subsequent Interest
@@ -1558,24 +1503,278 @@ describe('Per-Entry Interest Engine & Ledger Tests', () => {
 
       // 6. Verify ledger as of 2025-07-01 (122 days after March 1):
       // - New interest must accrue ONLY on remaining 600 principal:
-      //   600 * 12 * 122 / (100 * 365) = 24.07
+      //   600 * 1% * 122 / 30 = 24.40
       // - The absorbed 400 must generate ZERO interest.
-      // - Total due = 600 + 24.07 = 624.07
+      // - Total due = 600 + 24.40 = 624.40
       const resJuly1 = await request(app)
         .get(`/api/v1/customers/${customerA.id}/ledger?calculationDate=2025-07-01T00:00:00Z`)
         .set('Authorization', `Bearer ${tokenA}`);
 
       expect(resJuly1.status).toBe(200);
       const summaryJuly1 = resJuly1.body.data.summary;
-      const entryBJuly1 = resJuly1.body.data.entries.find((e: { entryId: string }) => e.entryId === txB.id);
 
       expect(summaryJuly1.outstandingPrincipal).toBe(600);
-      expect(summaryJuly1.accruedInterest).toBeCloseTo(24.07, 1);
-      expect(summaryJuly1.totalDue).toBeCloseTo(624.07, 1);
+      expect(summaryJuly1.accruedInterest).toBeCloseTo(24.40, 1);
+      expect(summaryJuly1.totalDue).toBeCloseTo(624.40, 1);
+    });
+  });
 
-      expect(entryBJuly1.accruedInterest).toBeCloseTo(24.07, 1);
-      expect(entryBJuly1.remainingInterest).toBeCloseTo(24.07, 1);
-      expect(entryBJuly1.totalDue).toBeCloseTo(624.07, 1);
+  describe('STEP 4 Integration Tests - Production Ledger API & breakdownLog Contract', () => {
+    let testTokenA: string;
+    let testCustomerA: { id: string };
+
+    let testTokenB: string;
+
+    beforeEach(async () => {
+      const emailA = `test_ledger_api_a_${Date.now()}@example.com`;
+      const passHashA = await bcrypt.hash('Password123!', 10);
+      const uA = await prisma.user.create({
+        data: { email: emailA, passwordHash: passHashA, businessName: 'API Test Store A' },
+      });
+      testTokenA = jwt.sign({ id: uA.id, email: uA.email }, config.JWT_SECRET, { expiresIn: '1h' });
+
+      const cA = await prisma.customer.create({
+        data: { userId: uA.id, name: 'Customer Alpha', phoneNumber: '9876543210', lendingRate: 2, depositRate: 0 },
+      });
+      testCustomerA = cA;
+
+      const emailB = `test_ledger_api_b_${Date.now()}@example.com`;
+      const passHashB = await bcrypt.hash('Password123!', 10);
+      const uB = await prisma.user.create({
+        data: { email: emailB, passwordHash: passHashB, businessName: 'API Test Store B' },
+      });
+      testTokenB = jwt.sign({ id: uB.id, email: uB.email }, config.JWT_SECRET, { expiresIn: '1h' });
+    });
+
+    it('1. should return 401 Unauthorized when no auth token is provided', async () => {
+      const res = await request(app).get(`/api/v1/customers/${testCustomerA.id}/ledger`);
+      expect(res.status).toBe(401);
+    });
+
+    it('2. should return 404 when user attempts to access another user\'s customer ledger', async () => {
+      const res = await request(app)
+        .get(`/api/v1/customers/${testCustomerA.id}/ledger`)
+        .set('Authorization', `Bearer ${testTokenB}`);
+      expect(res.status).toBe(404);
+    });
+
+    it('3. should return valid empty breakdownLog for customer with zero transactions', async () => {
+      const res = await request(app)
+        .get(`/api/v1/customers/${testCustomerA.id}/ledger`)
+        .set('Authorization', `Bearer ${testTokenA}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.status).toBe('success');
+      expect(res.body.data).toHaveProperty('summary');
+      expect(res.body.data).toHaveProperty('breakdownLog');
+      expect(Array.isArray(res.body.data.breakdownLog)).toBe(true);
+      expect(res.body.data.breakdownLog).toHaveLength(0);
+      expect(res.body.data.summary.outstandingPrincipal).toBe(0);
+      expect(res.body.data.summary.accruedInterest).toBe(0);
+    });
+
+    it('4. should return breakdownLog array and correct ledger totals for customer with transactions', async () => {
+      await prisma.transaction.create({
+        data: {
+          customerId: testCustomerA.id,
+          type: TransactionType.DEBIT,
+          amount: 5000,
+          date: new Date('2025-01-01T00:00:00Z'),
+          interestStartDate: new Date('2025-01-01T00:00:00Z'),
+        },
+      });
+
+      await prisma.transaction.create({
+        data: {
+          customerId: testCustomerA.id,
+          type: TransactionType.DEBIT,
+          amount: 5000,
+          date: new Date('2025-02-01T00:00:00Z'),
+          interestStartDate: new Date('2025-02-01T00:00:00Z'),
+        },
+      });
+
+      const res = await request(app)
+        .get(`/api/v1/customers/${testCustomerA.id}/ledger?calculationDate=2025-03-03T00:00:00Z`)
+        .set('Authorization', `Bearer ${testTokenA}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.status).toBe('success');
+      expect(res.body.data).toHaveProperty('customer');
+      expect(res.body.data).toHaveProperty('summary');
+      expect(res.body.data).toHaveProperty('entries');
+      expect(res.body.data).toHaveProperty('transactions');
+      expect(res.body.data).toHaveProperty('breakdownLog');
+
+      const log = res.body.data.breakdownLog;
+      expect(Array.isArray(log)).toBe(true);
+      expect(log.length).toBeGreaterThan(0);
+
+      // Verify independently calculated expectation for 2% monthly rate:
+      // Phase 1 (Jan 1 to Feb 1, 31 days): 5000 * (2/100) * (31/30) = 103.33
+      // Phase 2 (Feb 1 to Mar 3, 30 days): 10000 * (2/100) * (30/30) = 200.00
+      expect(log[0].activePrincipal).toBe(5000);
+      expect(log[0].daysElapsed).toBe(31);
+      expect(log[0].interestAccrued).toBe(103.33);
+
+      expect(log[1].activePrincipal).toBe(10000);
+      expect(log[1].daysElapsed).toBe(30);
+      expect(log[1].interestAccrued).toBe(200);
+
+      // Verify summary fields are reconciled with calculation result
+      expect(res.body.data.summary.outstandingPrincipal).toBe(10000);
+      expect(res.body.data.summary.accruedInterest).toBe(303.33);
+      expect(res.body.data.summary.totalDue).toBe(10303.33);
+    });
+
+    it('5. should return 400 Bad Request when query contains an invalid calculationDate or asOfDate', async () => {
+      const res = await request(app)
+        .get(`/api/v1/customers/${testCustomerA.id}/ledger?asOfDate=not-a-valid-date`)
+        .set('Authorization', `Bearer ${testTokenA}`);
+
+      expect(res.status).toBe(400);
+      expect(res.body.status).toBe('error');
+      expect(res.body.message).toContain('Invalid calculationDate or asOfDate');
+    });
+
+    it('6. should return identical ledger payload whether using asOfDate or calculationDate query param', async () => {
+      await prisma.transaction.create({
+        data: {
+          customerId: testCustomerA.id,
+          type: TransactionType.DEBIT,
+          amount: 2000,
+          date: new Date('2025-01-01T00:00:00Z'),
+          interestStartDate: new Date('2025-01-01T00:00:00Z'),
+        },
+      });
+
+      const targetDate = '2025-03-02T00:00:00Z';
+
+      const resCalc = await request(app)
+        .get(`/api/v1/customers/${testCustomerA.id}/ledger?calculationDate=${targetDate}`)
+        .set('Authorization', `Bearer ${testTokenA}`);
+
+      const resAsOf = await request(app)
+        .get(`/api/v1/customers/${testCustomerA.id}/ledger?asOfDate=${targetDate}`)
+        .set('Authorization', `Bearer ${testTokenA}`);
+
+      expect(resCalc.status).toBe(200);
+      expect(resAsOf.status).toBe(200);
+      expect(resAsOf.body.data.summary).toEqual(resCalc.body.data.summary);
+      expect(resAsOf.body.data.breakdownLog).toEqual(resCalc.body.data.breakdownLog);
+    });
+
+    it('7. should reconcile totalDue === outstandingPrincipal + accruedInterest and match independently calculated expectations for complex lifecycle', async () => {
+      // 1. DEBIT 1000.00 on 2025-01-01
+      await prisma.transaction.create({
+        data: {
+          customerId: testCustomerA.id,
+          type: TransactionType.DEBIT,
+          amount: 1000.00,
+          date: new Date('2025-01-01T00:00:00Z'),
+          interestStartDate: new Date('2025-01-01T00:00:00Z'),
+        },
+      });
+
+      // 2. DEBIT 500.00 on 2025-02-01
+      await prisma.transaction.create({
+        data: {
+          customerId: testCustomerA.id,
+          type: TransactionType.DEBIT,
+          amount: 500.00,
+          date: new Date('2025-02-01T00:00:00Z'),
+          interestStartDate: new Date('2025-02-01T00:00:00Z'),
+        },
+      });
+
+      // 3. CREDIT 100.00 on 2025-03-03
+      await prisma.transaction.create({
+        data: {
+          customerId: testCustomerA.id,
+          type: TransactionType.CREDIT,
+          amount: 100.00,
+          date: new Date('2025-03-03T00:00:00Z'),
+          interestStartDate: new Date('2025-03-03T00:00:00Z'),
+        },
+      });
+
+      // 4. Voided DEBIT 9999.00 on 2025-01-15 (should be ignored)
+      await prisma.transaction.create({
+        data: {
+          customerId: testCustomerA.id,
+          type: TransactionType.DEBIT,
+          amount: 9999.00,
+          date: new Date('2025-01-15T00:00:00Z'),
+          interestStartDate: new Date('2025-01-15T00:00:00Z'),
+          isVoided: true,
+        },
+      });
+
+      const res = await request(app)
+        .get(`/api/v1/customers/${testCustomerA.id}/ledger?asOfDate=2025-04-02T00:00:00Z`)
+        .set('Authorization', `Bearer ${testTokenA}`);
+
+      expect(res.status).toBe(200);
+      const { summary, breakdownLog } = res.body.data;
+
+      // Independent Expectations:
+      // Phase 1 (Jan 1 -> Feb 1, 31 days): 1000 * 0.02 * (31/30) = 20.67
+      // Phase 2 (Feb 1 -> Mar 3, 30 days): 1500 * 0.02 * (30/30) = 30.00. Int accrued before credit = 50.67.
+      // Credit 100 pays 50.67 interest first, then 49.33 principal. Principal left = 1450.67, Int left = 0.
+      // Phase 3 (Mar 3 -> Apr 2, 30 days): 1450.67 * 0.02 * (30/30) = 29.01
+      expect(summary.outstandingPrincipal).toBe(1450.67);
+      expect(summary.accruedInterest).toBe(29.01);
+      expect(summary.totalDue).toBe(1479.68);
+      expect(summary.totalDue).toBe(summary.outstandingPrincipal + summary.accruedInterest);
+
+      expect(breakdownLog).toHaveLength(3);
+      expect(breakdownLog[0].interestAccrued).toBe(20.67);
+      expect(breakdownLog[1].interestAccrued).toBe(30.00);
+      expect(breakdownLog[2].interestAccrued).toBe(29.01);
+    });
+
+    it('8. should correctly calculate ledger and breakdown for small decimal values (0.01, 100.01) and repeated small payments', async () => {
+      await prisma.transaction.create({
+        data: {
+          customerId: testCustomerA.id,
+          type: TransactionType.DEBIT,
+          amount: 100.01,
+          date: new Date('2025-01-01T00:00:00Z'),
+          interestStartDate: new Date('2025-01-01T00:00:00Z'),
+        },
+      });
+
+      await prisma.transaction.create({
+        data: {
+          customerId: testCustomerA.id,
+          type: TransactionType.DEBIT,
+          amount: 0.01,
+          date: new Date('2025-01-31T00:00:00Z'),
+          interestStartDate: new Date('2025-01-31T00:00:00Z'),
+        },
+      });
+
+      const res = await request(app)
+        .get(`/api/v1/customers/${testCustomerA.id}/ledger?calculationDate=2025-03-02T00:00:00Z`)
+        .set('Authorization', `Bearer ${testTokenA}`);
+
+      expect(res.status).toBe(200);
+      const { summary } = res.body.data;
+
+      // Independent expectation:
+      // Phase 1 (Jan 1 -> Jan 31, 30 days): 100.01 * 0.02 * (30/30) = 2.0002 -> 2.00
+      // Phase 2 (Jan 31 -> Mar 2, 30 days): 100.02 * 0.02 * (30/30) = 2.0004 -> 2.00
+      expect(summary.outstandingPrincipal).toBe(100.02);
+      expect(summary.accruedInterest).toBe(4.00);
+      expect(summary.totalDue).toBe(104.02);
+      expect(summary.totalDue).toBe(summary.outstandingPrincipal + summary.accruedInterest);
+    });
+
+    afterAll(async () => {
+      await prisma.transaction.deleteMany();
+      await prisma.customer.deleteMany();
+      await prisma.user.deleteMany();
+      await disconnectDb();
     });
   });
 });

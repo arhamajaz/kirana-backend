@@ -186,7 +186,13 @@ export const ledgerQuerySchema = z.object({
   calculationDate: z
     .string()
     .refine((val) => !isNaN(Date.parse(val)), {
-      message: 'Invalid date format',
+      message: 'Invalid calculationDate or asOfDate query parameter.',
+    })
+    .optional(),
+  asOfDate: z
+    .string()
+    .refine((val) => !isNaN(Date.parse(val)), {
+      message: 'Invalid calculationDate or asOfDate query parameter.',
     })
     .optional(),
 });

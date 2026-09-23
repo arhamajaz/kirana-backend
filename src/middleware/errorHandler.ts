@@ -33,7 +33,7 @@ export const errorHandler = (
     logger.warn(`Validation error: ${JSON.stringify(err.issues)}`);
     return res.status(400).json({
       status: 'error',
-      message: 'Validation failed',
+      message: err.issues[0]?.message || 'Validation failed',
       errors: err.issues.map((e: z.ZodIssue) => ({
         field: e.path.join('.'),
         message: e.message,
