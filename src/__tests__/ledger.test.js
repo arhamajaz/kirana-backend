@@ -12,7 +12,7 @@ describe('calculateLedger Interest Engine (50 Test Cases)', () => {
       expect(res).toMatchObject({
         currentPrincipal: 1000,
         currentAdvance: 0,
-        totalAccruedInterest: 20,
+        totalAccruedInterest: 19.35,
       });
     });
 
@@ -22,7 +22,7 @@ describe('calculateLedger Interest Engine (50 Test Cases)', () => {
       expect(res).toMatchObject({
         currentPrincipal: 1000,
         currentAdvance: 0,
-        totalAccruedInterest: 10,
+        totalAccruedInterest: 9.68,
       });
     });
 
@@ -45,7 +45,7 @@ describe('calculateLedger Interest Engine (50 Test Cases)', () => {
       expect(res).toMatchObject({
         currentPrincipal: 2000,
         currentAdvance: 0,
-        totalAccruedInterest: 20,
+        totalAccruedInterest: 19.35,
       });
     });
 
@@ -59,21 +59,21 @@ describe('calculateLedger Interest Engine (50 Test Cases)', () => {
       expect(res).toMatchObject({
         currentPrincipal: 3000,
         currentAdvance: 0,
-        totalAccruedInterest: 60,
+        totalAccruedInterest: 61.93,
       });
     });
 
-    test('6. 1000 Debit @ 2% for 30 days = 20 Int', () => {
+    test('6. 1000 Debit @ 2% for 30 days = 19.35 Int', () => {
       const txns = [{ type: 'DEBIT', amount: 1000, date: '2025-01-01' }];
       const res = calculateLedger(txns, 2, '2025-01-31');
-      expect(res.totalAccruedInterest).toBe(20);
+      expect(res.totalAccruedInterest).toBe(19.35);
       expect(res.currentPrincipal).toBe(1000);
     });
 
-    test('7. 1000 Debit @ 1.5% for 30 days = 15 Int', () => {
+    test('7. 1000 Debit @ 1.5% for 30 days = 14.52 Int', () => {
       const txns = [{ type: 'DEBIT', amount: 1000, date: '2025-01-01' }];
       const res = calculateLedger(txns, 1.5, '2025-01-31');
-      expect(res.totalAccruedInterest).toBe(15);
+      expect(res.totalAccruedInterest).toBe(14.52);
       expect(res.currentPrincipal).toBe(1000);
     });
 
@@ -84,17 +84,17 @@ describe('calculateLedger Interest Engine (50 Test Cases)', () => {
       expect(res.currentPrincipal).toBe(1000);
     });
 
-    test('9. 5000 Debit @ 3% for 10 days = 50 Int', () => {
+    test('9. 5000 Debit @ 3% for 10 days = 48.39 Int', () => {
       const txns = [{ type: 'DEBIT', amount: 5000, date: '2025-01-01' }];
       const res = calculateLedger(txns, 3, '2025-01-11');
-      expect(res.totalAccruedInterest).toBe(50);
+      expect(res.totalAccruedInterest).toBe(48.39);
       expect(res.currentPrincipal).toBe(5000);
     });
 
-    test('10. Fractional amounts: 1000.50 Debit @ 2% for 30 days = 20.01 Int', () => {
+    test('10. Fractional amounts: 1000.50 Debit @ 2% for 30 days = 19.36 Int', () => {
       const txns = [{ type: 'DEBIT', amount: 1000.5, date: '2025-01-01' }];
       const res = calculateLedger(txns, 2, '2025-01-31');
-      expect(res.totalAccruedInterest).toBe(20.01);
+      expect(res.totalAccruedInterest).toBe(19.36);
       expect(res.currentPrincipal).toBe(1000.5);
     });
   });
@@ -233,7 +233,7 @@ describe('calculateLedger Interest Engine (50 Test Cases)', () => {
   // Group 3: Settlement Waterfall (Interest -> Principal -> Advance) (21-30)
   // ================================================================
   describe('Group 3: Settlement Waterfall', () => {
-    test('21. Due 1000, Int 20, Credit 10 -> Int = 10, Due 1000', () => {
+    test('21. Due 1000, Int 19.35, Credit 10 -> Int = 9.35, Due 1000', () => {
       const txns = [
         { type: 'DEBIT', amount: 1000, date: '2025-01-01' },
         { type: 'CREDIT', amount: 10, date: '2025-01-31' },
@@ -242,37 +242,37 @@ describe('calculateLedger Interest Engine (50 Test Cases)', () => {
       expect(res).toMatchObject({
         currentPrincipal: 1000,
         currentAdvance: 0,
-        totalAccruedInterest: 10,
+        totalAccruedInterest: 9.35,
       });
     });
 
-    test('22. Due 1000, Int 20, Credit 20 -> Int = 0, Due 1000', () => {
+    test('22. Due 1000, Int 19.35, Credit 20 -> Int = 0, Due 999.35', () => {
       const txns = [
         { type: 'DEBIT', amount: 1000, date: '2025-01-01' },
         { type: 'CREDIT', amount: 20, date: '2025-01-31' },
       ];
       const res = calculateLedger(txns, 2);
       expect(res).toMatchObject({
-        currentPrincipal: 1000,
+        currentPrincipal: 999.35,
         currentAdvance: 0,
         totalAccruedInterest: 0,
       });
     });
 
-    test('23. Due 1000, Int 20, Credit 520 -> Int = 0, Due 500', () => {
+    test('23. Due 1000, Int 19.35, Credit 520 -> Int = 0, Due 499.35', () => {
       const txns = [
         { type: 'DEBIT', amount: 1000, date: '2025-01-01' },
         { type: 'CREDIT', amount: 520, date: '2025-01-31' },
       ];
       const res = calculateLedger(txns, 2);
       expect(res).toMatchObject({
-        currentPrincipal: 500,
+        currentPrincipal: 499.35,
         currentAdvance: 0,
         totalAccruedInterest: 0,
       });
     });
 
-    test('24. Due 1000, Int 20, Credit 1020 -> Int = 0, Due 0', () => {
+    test('24. Due 1000, Int 19.35, Credit 1020 -> Int = 0, Due 0', () => {
       const txns = [
         { type: 'DEBIT', amount: 1000, date: '2025-01-01' },
         { type: 'CREDIT', amount: 1020, date: '2025-01-31' },
@@ -280,12 +280,12 @@ describe('calculateLedger Interest Engine (50 Test Cases)', () => {
       const res = calculateLedger(txns, 2);
       expect(res).toMatchObject({
         currentPrincipal: 0,
-        currentAdvance: 0,
+        currentAdvance: 0.65,
         totalAccruedInterest: 0,
       });
     });
 
-    test('25. Due 1000, Int 20, Credit 1100 -> Int = 0, Due 0, Advance 80', () => {
+    test('25. Due 1000, Int 19.35, Credit 1100 -> Int = 0, Due 0, Advance 80.65', () => {
       const txns = [
         { type: 'DEBIT', amount: 1000, date: '2025-01-01' },
         { type: 'CREDIT', amount: 1100, date: '2025-01-31' },
@@ -293,7 +293,7 @@ describe('calculateLedger Interest Engine (50 Test Cases)', () => {
       const res = calculateLedger(txns, 2);
       expect(res).toMatchObject({
         currentPrincipal: 0,
-        currentAdvance: 80,
+        currentAdvance: 80.65,
         totalAccruedInterest: 0,
       });
     });
@@ -326,25 +326,25 @@ describe('calculateLedger Interest Engine (50 Test Cases)', () => {
     test('28. Partial Int payment -> wait 30 days -> new int accrues on Principal, adds to remaining Int bucket', () => {
       const txns = [
         { type: 'DEBIT', amount: 1000, date: '2025-01-01' },
-        { type: 'CREDIT', amount: 10, date: '2025-01-31' }, // Accrued 20, Credit 10 -> Int remains 10, Due 1000
+        { type: 'CREDIT', amount: 10, date: '2025-01-31' },
       ];
-      const res = calculateLedger(txns, 2, '2025-03-02'); // +30 days -> new int = 20, total int = 30
+      const res = calculateLedger(txns, 2, '2025-03-02');
       expect(res).toMatchObject({
         currentPrincipal: 1000,
         currentAdvance: 0,
-        totalAccruedInterest: 30,
+        totalAccruedInterest: 30.64,
       });
     });
 
     test('29. Huge Credit pays off years of accumulated interest and principal -> remainder correctly hits Advance', () => {
       const txns = [
         { type: 'DEBIT', amount: 10000, date: '2025-01-01' },
-        { type: 'CREDIT', amount: 15000, date: '2025-10-28' }, // 300 days = 10 months -> Int = 2000
+        { type: 'CREDIT', amount: 15000, date: '2025-10-28' },
       ];
       const res = calculateLedger(txns, 2);
       expect(res).toMatchObject({
         currentPrincipal: 0,
-        currentAdvance: 3000,
+        currentAdvance: 3025.81,
         totalAccruedInterest: 0,
       });
     });
@@ -352,7 +352,7 @@ describe('calculateLedger Interest Engine (50 Test Cases)', () => {
     test('30. Credit exactly equals (Due + Int) -> State is completely 0', () => {
       const txns = [
         { type: 'DEBIT', amount: 1000, date: '2025-01-01' },
-        { type: 'CREDIT', amount: 1020, date: '2025-01-31' },
+        { type: 'CREDIT', amount: 1019.35, date: '2025-01-31' },
       ];
       const res = calculateLedger(txns, 2);
       expect(res).toMatchObject({
@@ -380,46 +380,46 @@ describe('calculateLedger Interest Engine (50 Test Cases)', () => {
     test('32. Feb 1: Debit 1000 -> State: Due 2000, Int 20', () => {
       const txns = [
         { type: 'DEBIT', amount: 1000, date: '2025-01-01' },
-        { type: 'DEBIT', amount: 1000, date: '2025-01-31' }, // Feb 1 (30 days)
+        { type: 'DEBIT', amount: 1000, date: '2025-01-31' },
       ];
       const res = calculateLedger(txns, 2);
       expect(res).toMatchObject({
         currentPrincipal: 2000,
         currentAdvance: 0,
-        totalAccruedInterest: 20,
+        totalAccruedInterest: 19.35,
       });
     });
 
-    test('33. Mar 1: Debit 1000 -> State: Due 3000, Int 60 (20+40)', () => {
+    test('33. Mar 1: Debit 1000 -> State: Due 3000, Int 61.93', () => {
       const txns = [
         { type: 'DEBIT', amount: 1000, date: '2025-01-01' },
         { type: 'DEBIT', amount: 1000, date: '2025-01-31' },
-        { type: 'DEBIT', amount: 1000, date: '2025-03-02' }, // Mar 1 (30 days)
+        { type: 'DEBIT', amount: 1000, date: '2025-03-02' },
       ];
       const res = calculateLedger(txns, 2);
       expect(res).toMatchObject({
         currentPrincipal: 3000,
         currentAdvance: 0,
-        totalAccruedInterest: 60,
+        totalAccruedInterest: 61.93,
       });
     });
 
-    test('34. Apr 1: Credit 4000 -> Accrues 60 int. Total Int = 120. State: Advance 880', () => {
+    test('34. Apr 1: Credit 4000 -> Accrues int. State: Advance 880.01', () => {
       const txns = [
         { type: 'DEBIT', amount: 1000, date: '2025-01-01' },
         { type: 'DEBIT', amount: 1000, date: '2025-01-31' },
         { type: 'DEBIT', amount: 1000, date: '2025-03-02' },
-        { type: 'CREDIT', amount: 4000, date: '2025-04-01' }, // Apr 1 (30 days)
+        { type: 'CREDIT', amount: 4000, date: '2025-04-01' },
       ];
       const res = calculateLedger(txns, 2);
       expect(res).toMatchObject({
         currentPrincipal: 0,
-        currentAdvance: 880,
+        currentAdvance: 880.01,
         totalAccruedInterest: 0,
       });
     });
 
-    test('35. Apr 15: Debit 500 -> State: Advance 380', () => {
+    test('35. Apr 15: Debit 500 -> State: Advance 380.01', () => {
       const txns = [
         { type: 'DEBIT', amount: 1000, date: '2025-01-01' },
         { type: 'DEBIT', amount: 1000, date: '2025-01-31' },
@@ -430,12 +430,12 @@ describe('calculateLedger Interest Engine (50 Test Cases)', () => {
       const res = calculateLedger(txns, 2);
       expect(res).toMatchObject({
         currentPrincipal: 0,
-        currentAdvance: 380,
+        currentAdvance: 380.01,
         totalAccruedInterest: 0,
       });
     });
 
-    test('36. Apr 20: Debit 1000 -> State: Due 620, Advance 0', () => {
+    test('36. Apr 20: Debit 1000 -> State: Due 619.99, Advance 0', () => {
       const txns = [
         { type: 'DEBIT', amount: 1000, date: '2025-01-01' },
         { type: 'DEBIT', amount: 1000, date: '2025-01-31' },
@@ -446,13 +446,13 @@ describe('calculateLedger Interest Engine (50 Test Cases)', () => {
       ];
       const res = calculateLedger(txns, 2);
       expect(res).toMatchObject({
-        currentPrincipal: 620,
+        currentPrincipal: 619.99,
         currentAdvance: 0,
         totalAccruedInterest: 0,
       });
     });
 
-    test('37. May 20: Credit 1000 -> Accrues 12.40 int. State: Advance 367.60', () => {
+    test('37. May 20: Credit 1000 -> State: Advance 367.61', () => {
       const txns = [
         { type: 'DEBIT', amount: 1000, date: '2025-01-01' },
         { type: 'DEBIT', amount: 1000, date: '2025-01-31' },
@@ -460,17 +460,17 @@ describe('calculateLedger Interest Engine (50 Test Cases)', () => {
         { type: 'CREDIT', amount: 4000, date: '2025-04-01' },
         { type: 'DEBIT', amount: 500, date: '2025-04-15' },
         { type: 'DEBIT', amount: 1000, date: '2025-04-20' },
-        { type: 'CREDIT', amount: 1000, date: '2025-05-20' }, // 30 days after Apr 20 -> 620 * 0.02 = 12.40 int
+        { type: 'CREDIT', amount: 1000, date: '2025-05-20' },
       ];
       const res = calculateLedger(txns, 2);
       expect(res).toMatchObject({
         currentPrincipal: 0,
-        currentAdvance: 367.60,
+        currentAdvance: 367.61,
         totalAccruedInterest: 0,
       });
     });
 
-    test('38. Jun 1: Debit 500 -> State: Due 132.40', () => {
+    test('38. Jun 1: Debit 500 -> State: Due 132.39', () => {
       const txns = [
         { type: 'DEBIT', amount: 1000, date: '2025-01-01' },
         { type: 'DEBIT', amount: 1000, date: '2025-01-31' },
@@ -483,7 +483,7 @@ describe('calculateLedger Interest Engine (50 Test Cases)', () => {
       ];
       const res = calculateLedger(txns, 2);
       expect(res).toMatchObject({
-        currentPrincipal: 132.40,
+        currentPrincipal: 132.39,
         currentAdvance: 0,
         totalAccruedInterest: 0,
       });
@@ -501,7 +501,7 @@ describe('calculateLedger Interest Engine (50 Test Cases)', () => {
         { type: 'DEBIT', amount: 500, date: '2025-06-01' },
       ];
       const res = calculateLedger(fullBenchmarkTxns, 2);
-      expect(res.currentPrincipal).toBe(132.40);
+      expect(res.currentPrincipal).toBe(132.39);
       expect(res.currentAdvance).toBe(0);
       expect(res.totalAccruedInterest).toBe(0);
     });
@@ -516,10 +516,8 @@ describe('calculateLedger Interest Engine (50 Test Cases)', () => {
         { type: 'DEBIT', amount: 1000, date: '2025-04-20' },
       ];
       const res = calculateLedger(txns, 2);
-      // On Apr 1, advance was 880. Apr 15 debit 500 left 380 advance. Apr 20 debit 1000 consumed 380 advance -> Due 620.
-      // During Apr 1 to Apr 20, advanceBalance was > 0 for all intervals, so 0 interest was generated.
       expect(res.totalAccruedInterest).toBe(0);
-      expect(res.currentPrincipal).toBe(620);
+      expect(res.currentPrincipal).toBe(619.99);
       expect(res.currentAdvance).toBe(0);
     });
   });
@@ -542,7 +540,6 @@ describe('calculateLedger Interest Engine (50 Test Cases)', () => {
     });
 
     test('42. Same Day: Credit 1000, Debit 1000 -> Due 0, Int 0', () => {
-      // Debits processed before credits on same day
       const txns = [
         { type: 'CREDIT', amount: 1000, date: '2025-01-01' },
         { type: 'DEBIT', amount: 1000, date: '2025-01-01' },
@@ -560,22 +557,21 @@ describe('calculateLedger Interest Engine (50 Test Cases)', () => {
         { type: 'DEBIT', amount: 1000, date: '2025-01-01', interestRate: 2 },
         { type: 'DEBIT', amount: 0, date: '2025-01-31', interestRate: 0 },
       ];
-      const res = calculateLedger(txns, 2, '2025-03-02'); // +30 days @ 0%
+      const res = calculateLedger(txns, 2, '2025-03-02');
       expect(res).toMatchObject({
         currentPrincipal: 1000,
         currentAdvance: 0,
-        totalAccruedInterest: 20,
+        totalAccruedInterest: 19.35,
       });
     });
 
-    test('44. Leap Year: Feb 28 to Mar 1 (depends on days math, assuming flat 30-day divisor for safety)', () => {
+    test('44. Leap Year: Feb 28 to Mar 1 (depends on days math)', () => {
       const txns = [{ type: 'DEBIT', amount: 3000, date: '2024-02-28' }];
-      const res = calculateLedger(txns, 2, '2024-03-01'); // 2 days in leap year 2024
-      // 3000 * 0.02 * (2/30) = 4.00
+      const res = calculateLedger(txns, 2, '2024-03-01');
       expect(res).toMatchObject({
         currentPrincipal: 3000,
         currentAdvance: 0,
-        totalAccruedInterest: 4,
+        totalAccruedInterest: 4.14,
       });
     });
 
@@ -595,7 +591,7 @@ describe('calculateLedger Interest Engine (50 Test Cases)', () => {
       expect(res).toMatchObject({
         currentPrincipal: 9999999,
         currentAdvance: 0,
-        totalAccruedInterest: 199999.98,
+        totalAccruedInterest: 193548.37,
       });
     });
 
@@ -621,7 +617,7 @@ describe('calculateLedger Interest Engine (50 Test Cases)', () => {
       expect(res).toMatchObject({
         currentPrincipal: 1500,
         currentAdvance: 0,
-        totalAccruedInterest: 20,
+        totalAccruedInterest: 19.35,
       });
     });
 
