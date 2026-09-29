@@ -92,29 +92,39 @@ export function calculateElapsedCalendarMonths(startDate: Date | string, endDate
   }
 
   if (current < d2) {
-    const msDiff = d2.getTime() - current.getTime();
-    const remainingDays = msDiff / (1000 * 60 * 60 * 24);
+    const isSameDay =
+      (current.getFullYear() === d2.getFullYear() &&
+        current.getMonth() === d2.getMonth() &&
+        current.getDate() === d2.getDate()) ||
+      (current.getUTCFullYear() === d2.getUTCFullYear() &&
+        current.getUTCMonth() === d2.getUTCMonth() &&
+        current.getUTCDate() === d2.getUTCDate());
 
-    let nextYear = current.getFullYear();
-    let nextMonth = current.getMonth() + 1;
-    if (nextMonth > 11) {
-      nextYear += Math.floor(nextMonth / 12);
-      nextMonth = nextMonth % 12;
+    if (!isSameDay) {
+      const msDiff = d2.getTime() - current.getTime();
+      const remainingDays = msDiff / (1000 * 60 * 60 * 24);
+
+      let nextYear = current.getFullYear();
+      let nextMonth = current.getMonth() + 1;
+      if (nextMonth > 11) {
+        nextYear += Math.floor(nextMonth / 12);
+        nextMonth = nextMonth % 12;
+      }
+      const daysInNextMonth = new Date(nextYear, nextMonth + 1, 0).getDate();
+      const targetDay = Math.min(anchorDay, daysInNextMonth);
+      const nextAnniversary = new Date(
+        nextYear,
+        nextMonth,
+        targetDay,
+        d1.getHours(),
+        d1.getMinutes(),
+        d1.getSeconds(),
+        d1.getMilliseconds()
+      );
+
+      const spanDays = Math.max(1, (nextAnniversary.getTime() - current.getTime()) / (1000 * 60 * 60 * 24));
+      months += remainingDays / spanDays;
     }
-    const daysInNextMonth = new Date(nextYear, nextMonth + 1, 0).getDate();
-    const targetDay = Math.min(anchorDay, daysInNextMonth);
-    const nextAnniversary = new Date(
-      nextYear,
-      nextMonth,
-      targetDay,
-      d1.getHours(),
-      d1.getMinutes(),
-      d1.getSeconds(),
-      d1.getMilliseconds()
-    );
-
-    const spanDays = Math.max(1, (nextAnniversary.getTime() - current.getTime()) / (1000 * 60 * 60 * 24));
-    months += remainingDays / spanDays;
   }
 
   return months;
@@ -193,9 +203,11 @@ export function calculateLedger(
 
     // Step A: Accrue Interest to Current Date
     if (lastDate !== null) {
+      const dStart = new Date(lastDate.getFullYear(), lastDate.getMonth(), lastDate.getDate());
+      const dEnd = new Date(txDate.getFullYear(), txDate.getMonth(), txDate.getDate());
       const exactDays = Math.max(
         0,
-        Math.round((txDate.getTime() - lastDate.getTime()) / (1000 * 60 * 60 * 24))
+        Math.round((dEnd.getTime() - dStart.getTime()) / (1000 * 60 * 60 * 24))
       );
 
       // Rule: If advanceBalance > 0, newInterest = 0 (Advance balances NEVER accrue interest)
@@ -206,7 +218,7 @@ export function calculateLedger(
           : `${rawActiveRate}% monthly`;
 
         if (principalDue > 0 && advanceBalance === 0) {
-          const elapsedMonths = calculateElapsedCalendarMonths(lastDate, txDate);
+          const elapsedMonths = calculateElapsedCalendarMonths(dStart, dEnd);
           const newInterest = roundMoney(principalDue * (effectiveMonthlyRate / 100) * elapsedMonths);
           accruedInterest = roundMoney(accruedInterest + newInterest);
           breakdownLog.push({
@@ -226,7 +238,7 @@ export function calculateLedger(
             startDate: new Date(lastDate),
             endDate: new Date(txDate),
             daysElapsed: exactDays,
-            elapsedMonths: roundMoney(calculateElapsedCalendarMonths(lastDate, txDate)),
+            elapsedMonths: roundMoney(calculateElapsedCalendarMonths(dStart, dEnd)),
             activePrincipal: 0,
             interestGenerated: 0,
             interestAccrued: 0,
@@ -282,10 +294,12 @@ export function calculateLedger(
 
   // Step A (Final): Accrue Interest up to asOfDate if requested
   if (asOfDate && !isNaN(asOfDate.getTime()) && lastDate !== null) {
-    if (asOfDate.getTime() > lastDate.getTime()) {
+    const dStart = new Date(lastDate.getFullYear(), lastDate.getMonth(), lastDate.getDate());
+    const dEnd = new Date(asOfDate.getFullYear(), asOfDate.getMonth(), asOfDate.getDate());
+    if (dEnd.getTime() > dStart.getTime()) {
       const exactDays = Math.max(
         0,
-        Math.round((asOfDate.getTime() - lastDate.getTime()) / (1000 * 60 * 60 * 24))
+        Math.round((dEnd.getTime() - dStart.getTime()) / (1000 * 60 * 60 * 24))
       );
 
       if (exactDays > 0) {
@@ -295,7 +309,7 @@ export function calculateLedger(
           : `${rawActiveRate}% monthly`;
 
         if (principalDue > 0 && advanceBalance === 0) {
-          const elapsedMonths = calculateElapsedCalendarMonths(lastDate, asOfDate);
+          const elapsedMonths = calculateElapsedCalendarMonths(dStart, dEnd);
           const newInterest = roundMoney(principalDue * (effectiveMonthlyRate / 100) * elapsedMonths);
           accruedInterest = roundMoney(accruedInterest + newInterest);
           breakdownLog.push({
@@ -315,7 +329,7 @@ export function calculateLedger(
             startDate: new Date(lastDate),
             endDate: new Date(asOfDate),
             daysElapsed: exactDays,
-            elapsedMonths: roundMoney(calculateElapsedCalendarMonths(lastDate, asOfDate)),
+            elapsedMonths: roundMoney(calculateElapsedCalendarMonths(dStart, dEnd)),
             activePrincipal: 0,
             interestGenerated: 0,
             interestAccrued: 0,
