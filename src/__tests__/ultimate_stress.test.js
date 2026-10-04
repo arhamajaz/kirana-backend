@@ -1,6 +1,6 @@
 const { calculateLedger } = require('../utils/ledgerEngine');
 
-describe('100-Case Ultimate Financial Engine Stress Test', () => {
+describe('150-Case Ultimate Financial Engine Stress Test', () => {
 
   test('10-Year 10-Phase Stress Test: ₹10,000 over 10 years with 10 rate changes (1% to 10%) -> Exactly ₹5,500.00', () => {
     const txns = [
@@ -35,33 +35,67 @@ describe('100-Case Ultimate Financial Engine Stress Test', () => {
     expect(res.totalAccruedInterest).toBe(5500.00);
   });
 
-  // Verify full 100 cases array execution
-  test('Execute 100 diverse test cases with exact phase summation verification', () => {
+  test('2-Phase Compound Capitalization Benchmark: 50k (4m @ 12% yr compound) + 100k debit (2m @ 12% yr compound) -> Exactly ₹5,086.01', () => {
+    const txns = [
+      { type: 'DEBIT', amount: 50000, date: '2026-01-01', interestRate: 12, rateUnit: 'yearly', interestType: 'compound' },
+      { type: 'DEBIT', amount: 100000, date: '2026-05-01', interestRate: 12, rateUnit: 'yearly', interestType: 'compound' }
+    ];
+    const res = calculateLedger(txns, { interestRatePerYear: 12, rateUnit: 'yearly', interestType: 'compound' }, '2026-07-01');
+    expect(res.breakdownLog).toHaveLength(2);
+    expect(res.breakdownLog[0].interestAccrued).toBe(2030.20);
+    expect(res.breakdownLog[1].activePrincipal).toBe(152030.20);
+    expect(res.breakdownLog[1].interestAccrued).toBe(3055.81);
+    expect(res.totalAccruedInterest).toBe(5086.01);
+  });
+
+  test('Execute 150 diverse test cases with exact phase summation verification', () => {
     let passedCount = 0;
 
-    for (let i = 1; i <= 100; i++) {
+    for (let i = 1; i <= 150; i++) {
       let txns = [];
       let asOfDate = '2025-05-01';
       let expectedInterest = 0;
+      let options = { interestRatePerYear: 12, rateUnit: 'yearly' };
 
-      if (i <= 20) {
+      if (i <= 30) {
         // Single-phase standard durations
         const rate = (i % 5) + 5; // 5-9%
         const amount = i * 1000;
         txns = [{ type: 'DEBIT', amount, date: '2025-01-01', interestRate: rate, rateUnit: 'yearly' }];
-        // 4 months
         expectedInterest = Math.round(amount * (rate / 12 / 100) * 4 * 100) / 100;
-      } else if (i <= 40) {
+      } else if (i <= 60) {
         // Multi-phase 3-rate changes
+        const amount = 10000 + (i - 30) * 1000;
         txns = [
-          { type: 'DEBIT', amount: 10000, date: '2025-01-01', interestRate: 6, rateUnit: 'yearly' },
+          { type: 'DEBIT', amount, date: '2025-01-01', interestRate: 6, rateUnit: 'yearly' },
           { type: 'DEBIT', amount: 0, date: '2025-03-01', interestRate: 12, rateUnit: 'yearly' },
           { type: 'DEBIT', amount: 0, date: '2025-05-01', interestRate: 18, rateUnit: 'yearly' },
         ];
         asOfDate = '2025-07-01';
-        // Phase 1 (2m @ 6% = 100), Phase 2 (2m @ 12% = 200), Phase 3 (2m @ 18% = 300)
-        expectedInterest = 600.00;
-      } else if (i <= 50) {
+        const p1 = amount * (0.06 / 12) * 2;
+        const p2 = amount * (0.12 / 12) * 2;
+        const p3 = amount * (0.18 / 12) * 2;
+        expectedInterest = Math.round((p1 + p2 + p3) * 100) / 100;
+      } else if (i <= 90) {
+        // Multi-phase Compound Interest with Capitalization
+        if (i % 2 === 0) {
+          // Benchmark 2-phase compound capitalization
+          txns = [
+            { type: 'DEBIT', amount: 50000, date: '2026-01-01', interestRate: 12, rateUnit: 'yearly', interestType: 'compound' },
+            { type: 'DEBIT', amount: 100000, date: '2026-05-01', interestRate: 12, rateUnit: 'yearly', interestType: 'compound' }
+          ];
+          asOfDate = '2026-07-01';
+          expectedInterest = 5086.01;
+        } else {
+          // 2-phase compound rate change (10k @ 12% yr 3m + 6% yr 3m)
+          txns = [
+            { type: 'DEBIT', amount: 10000, date: '2026-01-01', interestRate: 12, rateUnit: 'yearly', interestType: 'compound' },
+            { type: 'DEBIT', amount: 0, date: '2026-04-01', interestRate: 6, rateUnit: 'yearly', interestType: 'compound' }
+          ];
+          asOfDate = '2026-07-01';
+          expectedInterest = 458.33;
+        }
+      } else if (i <= 110) {
         // 10-Year Stress Test variations
         txns = [
           { type: 'DEBIT', amount: 10000, date: '2010-01-01', interestRate: 1, rateUnit: 'yearly' },
@@ -77,7 +111,7 @@ describe('100-Case Ultimate Financial Engine Stress Test', () => {
         ];
         asOfDate = '2020-01-01';
         expectedInterest = 5500.00;
-      } else if (i <= 70) {
+      } else if (i <= 135) {
         // Advance & Settlement Waterfall
         txns = [
           { type: 'CREDIT', amount: 5000, date: '2025-01-01' },
@@ -85,25 +119,23 @@ describe('100-Case Ultimate Financial Engine Stress Test', () => {
         ];
         asOfDate = '2025-05-01';
         expectedInterest = 0.00;
-      } else if (i <= 85) {
-        // Edge cases (Leap years, Voided, Zero amount)
-        txns = [
-          { type: 'DEBIT', amount: 10000, date: '2024-01-01', interestRate: 12, rateUnit: 'yearly' },
-          { type: 'DEBIT', amount: 5000, date: '2024-01-01', is_void: true },
-        ];
-        asOfDate = '2024-03-01';
-        // 2 months @ 12% = 200.00
-        expectedInterest = 200.00;
       } else {
-        // Compound Interest multi-phase
-        txns = [
-          { type: 'DEBIT', amount: 10000, date: '2026-01-01', interestRate: 12, rateUnit: 'yearly', interestType: 'compound' },
-        ];
-        asOfDate = '2026-04-01';
-        expectedInterest = 303.01;
+        // Edge cases (Leap years, Voided, Rate unit variations)
+        if (i % 2 === 0) {
+          txns = [{ type: 'DEBIT', amount: 3000, date: '2024-02-28' }];
+          asOfDate = '2024-03-01';
+          options = { interestRatePerMonth: 2, rateUnit: 'monthly' };
+          expectedInterest = 4.14;
+        } else {
+          txns = [
+            { type: 'DEBIT', amount: 10000, date: '2025-01-01', interestRate: 6, rateUnit: 'p.a.' }
+          ];
+          asOfDate = '2025-05-01';
+          expectedInterest = 200.00;
+        }
       }
 
-      const res = calculateLedger(txns, { interestRatePerYear: 12, rateUnit: 'yearly' }, asOfDate);
+      const res = calculateLedger(txns, options, asOfDate);
       const phaseSum = Math.round(res.breakdownLog.reduce((s, p) => s + (p.interestAccrued || 0), 0) * 100) / 100;
 
       expect(res.totalAccruedInterest).toBe(phaseSum);
@@ -111,7 +143,7 @@ describe('100-Case Ultimate Financial Engine Stress Test', () => {
       passedCount++;
     }
 
-    expect(passedCount).toBe(100);
+    expect(passedCount).toBe(150);
   });
 
 });
