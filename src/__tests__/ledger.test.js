@@ -727,14 +727,17 @@ describe('calculateLedger Interest Engine (50 Test Cases)', () => {
       expect(res.totalAccruedInterest).toBe(808.00);
     });
 
-    test('Zero-Interest Advance with Compound Interest mode -> 0 Int accrued on advance', () => {
+    test('2-Phase Capitalization Benchmark: 50k (4m @ 12% yr compound) + 100k debit (2m @ 12% yr compound) -> Exactly 5,086.01', () => {
       const txns = [
-        { type: 'CREDIT', amount: 5000, date: '2026-01-01', interestType: 'compound' },
-        { type: 'DEBIT', amount: 2000, date: '2026-02-01', interestType: 'compound' }
+        { type: 'DEBIT', amount: 50000, date: '2026-01-01', interestRate: 12, rateUnit: 'yearly', interestType: 'compound' },
+        { type: 'DEBIT', amount: 100000, date: '2026-05-01', interestRate: 12, rateUnit: 'yearly', interestType: 'compound' }
       ];
-      const res = calculateLedger(txns, { interestRatePerYear: 12, rateUnit: 'yearly', interestType: 'compound' }, '2026-04-01');
-      expect(res.currentAdvance).toBe(3000);
-      expect(res.totalAccruedInterest).toBe(0);
+      const res = calculateLedger(txns, { interestRatePerYear: 12, rateUnit: 'yearly', interestType: 'compound' }, '2026-07-01');
+      expect(res.breakdownLog).toHaveLength(2);
+      expect(res.breakdownLog[0].interestAccrued).toBe(2030.20);
+      expect(res.breakdownLog[1].activePrincipal).toBe(152030.20);
+      expect(res.breakdownLog[1].interestAccrued).toBe(3055.81);
+      expect(res.totalAccruedInterest).toBe(5086.01);
     });
   });
 });

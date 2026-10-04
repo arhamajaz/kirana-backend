@@ -250,8 +250,9 @@ export function calculateLedger(
 
         if (principalDue > 0 && advanceBalance === 0) {
           const elapsedMonths = calculateElapsedCalendarMonths(dStart, dEnd);
+          const compoundingBase = isCompound ? roundMoney(principalDue + accruedInterest) : principalDue;
           const newInterest = isCompound
-            ? roundMoney(principalDue * (Math.pow(1 + (effectiveMonthlyRate / 100), elapsedMonths) - 1))
+            ? roundMoney(compoundingBase * (Math.pow(1 + (effectiveMonthlyRate / 100), elapsedMonths) - 1))
             : roundMoney(principalDue * (effectiveMonthlyRate / 100) * elapsedMonths);
           accruedInterest = roundMoney(accruedInterest + newInterest);
           breakdownLog.push({
@@ -259,7 +260,7 @@ export function calculateLedger(
             endDate: new Date(txDate),
             daysElapsed: exactDays,
             elapsedMonths: roundMoney(elapsedMonths),
-            activePrincipal: principalDue,
+            activePrincipal: compoundingBase,
             interestGenerated: newInterest,
             interestAccrued: newInterest,
             rateApplied: rateLabel,
@@ -364,8 +365,9 @@ export function calculateLedger(
 
         if (principalDue > 0 && advanceBalance === 0) {
           const elapsedMonths = calculateElapsedCalendarMonths(dStart, dEnd);
+          const compoundingBase = isCompound ? roundMoney(principalDue + accruedInterest) : principalDue;
           const newInterest = isCompound
-            ? roundMoney(principalDue * (Math.pow(1 + (effectiveMonthlyRate / 100), elapsedMonths) - 1))
+            ? roundMoney(compoundingBase * (Math.pow(1 + (effectiveMonthlyRate / 100), elapsedMonths) - 1))
             : roundMoney(principalDue * (effectiveMonthlyRate / 100) * elapsedMonths);
           accruedInterest = roundMoney(accruedInterest + newInterest);
           breakdownLog.push({
@@ -373,7 +375,7 @@ export function calculateLedger(
             endDate: new Date(asOfDate),
             daysElapsed: exactDays,
             elapsedMonths: roundMoney(elapsedMonths),
-            activePrincipal: principalDue,
+            activePrincipal: compoundingBase,
             interestGenerated: newInterest,
             interestAccrued: newInterest,
             rateApplied: rateLabel,
