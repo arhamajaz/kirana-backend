@@ -644,4 +644,39 @@ describe('calculateLedger Interest Engine (50 Test Cases)', () => {
       expect(Array.isArray(res.breakdownLog)).toBe(true);
     });
   });
+
+  describe('Comprehensive Advance & Settlement Waterfall Benchmark', () => {
+    const transactions = [
+      { type: 'DEBIT', amount: 1000, date: '2026-01-01' },
+      { type: 'DEBIT', amount: 1000, date: '2026-02-01' },
+      { type: 'DEBIT', amount: 1000, date: '2026-03-01' },
+      { type: 'CREDIT', amount: 4000, date: '2026-04-01' },
+      { type: 'DEBIT', amount: 500, date: '2026-04-15' },
+      { type: 'DEBIT', amount: 1000, date: '2026-04-20' },
+      { type: 'CREDIT', amount: 1000, date: '2026-05-20' },
+      { type: 'DEBIT', amount: 500, date: '2026-06-01' },
+    ];
+
+    test('asOfDate: 2026-04-01 -> Principal: 0, Advance: 880, Accrued Interest: 0', () => {
+      const res = calculateLedger(transactions, 2, '2026-04-01');
+      expect(res.currentPrincipal).toBe(0);
+      expect(res.currentAdvance).toBe(880);
+      expect(res.totalAccruedInterest).toBe(0);
+    });
+
+    test('asOfDate: 2026-05-20 -> Principal: 0, Advance: 367.60, Accrued Interest: 0', () => {
+      const res = calculateLedger(transactions, 2, '2026-05-20');
+      expect(res.currentPrincipal).toBe(0);
+      expect(res.currentAdvance).toBe(367.60);
+      expect(res.totalAccruedInterest).toBe(0);
+    });
+
+    test('asOfDate: 2026-06-01 -> Principal: 132.40, Advance: 0, Accrued Interest: 0', () => {
+      const res = calculateLedger(transactions, 2, '2026-06-01');
+      expect(res.currentPrincipal).toBe(132.40);
+      expect(res.currentAdvance).toBe(0);
+      expect(res.totalAccruedInterest).toBe(0);
+    });
+  });
 });
+

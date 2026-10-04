@@ -170,9 +170,16 @@ export function calculateLedger(
     }
   }
 
-  // Directive 3 / Edge Case 47: Filter out voided transactions
+  // Directive 3 / Edge Case 47: Filter out voided transactions & transactions after asOfDate
   const validTxns = transactions.filter((t) => {
-    return !t.is_void && !t.isVoid && !t.isVoided && !t.is_voided;
+    if (t.is_void || t.isVoid || t.isVoided || t.is_voided) return false;
+    if (asOfDate) {
+      const tDate = new Date(t.date);
+      const dTx = new Date(tDate.getFullYear(), tDate.getMonth(), tDate.getDate());
+      const dAsOf = new Date(asOfDate.getFullYear(), asOfDate.getMonth(), asOfDate.getDate());
+      if (dTx.getTime() > dAsOf.getTime()) return false;
+    }
+    return true;
   });
 
   // Directive 2 / Edge Case 48: Sort transactions chronologically (Date ASC).
