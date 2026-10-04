@@ -11,6 +11,7 @@ export interface LedgerTransaction {
   rate?: number | string | null;
   rateUnit?: 'monthly' | 'yearly' | 'annual' | string;
   isAnnual?: boolean;
+  interestType?: 'simple' | 'compound' | 'none' | string;
 }
 
 export interface LedgerOptions {
@@ -18,6 +19,7 @@ export interface LedgerOptions {
   interestRatePerYear?: number;
   rateUnit?: 'monthly' | 'yearly' | 'annual' | string;
   isAnnual?: boolean;
+  interestType?: 'simple' | 'compound' | 'none' | string;
   asOfDate?: Date | string | null;
   initialPrincipal?: number;
   initialAdvance?: number;
@@ -154,6 +156,7 @@ export function calculateLedger(
 ): LedgerCalculationResult {
   let defaultRate = 0;
   let isYearlyRate = false;
+  let defaultInterestType = 'simple';
   let asOfDate: Date | null = null;
   let principalDue = 0;
   let advanceBalance = 0;
@@ -175,6 +178,9 @@ export function calculateLedger(
     } else {
       defaultRate = (rateOrOptions as any).interestRate ?? (rateOrOptions as any).rate ?? 0;
       isYearlyRate = isYearlyUnit(rateOrOptions.rateUnit, rateOrOptions.isAnnual);
+    }
+    if ((rateOrOptions as any).interestType || (rateOrOptions as any).interest_type) {
+      defaultInterestType = String((rateOrOptions as any).interestType || (rateOrOptions as any).interest_type).toLowerCase();
     }
     principalDue = rateOrOptions.initialPrincipal ?? 0;
     advanceBalance = rateOrOptions.initialAdvance ?? 0;
@@ -218,6 +224,7 @@ export function calculateLedger(
   let lastDate: Date | null = null;
   let rawActiveRate = defaultRate;
   let activeIsYearly = isYearlyRate;
+  let activeInterestType = defaultInterestType;
 
   // Chronological Loop per Transaction
   for (const tx of sortedTxns) {
@@ -236,13 +243,16 @@ export function calculateLedger(
       // Rule: If advanceBalance > 0, newInterest = 0 (Advance balances NEVER accrue interest)
       if (exactDays > 0) {
         const effectiveMonthlyRate = activeIsYearly ? rawActiveRate / 12 : rawActiveRate;
+        const isCompound = activeInterestType === 'compound';
         const rateLabel = activeIsYearly 
-          ? `${rawActiveRate}% yearly` 
-          : `${rawActiveRate}% monthly`;
+          ? `${rawActiveRate}% yearly${isCompound ? ' (Compound)' : ''}` 
+          : `${rawActiveRate}% monthly${isCompound ? ' (Compound)' : ''}`;
 
         if (principalDue > 0 && advanceBalance === 0) {
           const elapsedMonths = calculateElapsedCalendarMonths(dStart, dEnd);
-          const newInterest = roundMoney(principalDue * (effectiveMonthlyRate / 100) * elapsedMonths);
+          const newInterest = isCompound
+            ? roundMoney(principalDue * (Math.pow(1 + (effectiveMonthlyRate / 100), elapsedMonths) - 1))
+            : roundMoney(principalDue * (effectiveMonthlyRate / 100) * elapsedMonths);
           accruedInterest = roundMoney(accruedInterest + newInterest);
           breakdownLog.push({
             startDate: new Date(lastDate),
@@ -288,6 +298,9 @@ export function calculateLedger(
       } else if (isMonthlyUnit(tx.rateUnit)) {
         activeIsYearly = false;
       }
+    }
+    if (tx.interestType || (tx as any).interest_type) {
+      activeInterestType = String(tx.interestType || (tx as any).interest_type).toLowerCase();
     }
 
     // Step B: Apply Transaction Amounts (Strict Settlement Order)
@@ -344,13 +357,16 @@ export function calculateLedger(
 
       if (exactDays > 0) {
         const effectiveMonthlyRate = activeIsYearly ? rawActiveRate / 12 : rawActiveRate;
+        const isCompound = activeInterestType === 'compound';
         const rateLabel = activeIsYearly 
-          ? `${rawActiveRate}% yearly` 
-          : `${rawActiveRate}% monthly`;
+          ? `${rawActiveRate}% yearly${isCompound ? ' (Compound)' : ''}` 
+          : `${rawActiveRate}% monthly${isCompound ? ' (Compound)' : ''}`;
 
         if (principalDue > 0 && advanceBalance === 0) {
           const elapsedMonths = calculateElapsedCalendarMonths(dStart, dEnd);
-          const newInterest = roundMoney(principalDue * (effectiveMonthlyRate / 100) * elapsedMonths);
+          const newInterest = isCompound
+            ? roundMoney(principalDue * (Math.pow(1 + (effectiveMonthlyRate / 100), elapsedMonths) - 1))
+            : roundMoney(principalDue * (effectiveMonthlyRate / 100) * elapsedMonths);
           accruedInterest = roundMoney(accruedInterest + newInterest);
           breakdownLog.push({
             startDate: new Date(lastDate),

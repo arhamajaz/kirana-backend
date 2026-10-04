@@ -706,5 +706,36 @@ describe('calculateLedger Interest Engine (50 Test Cases)', () => {
       expect(res.totalAccruedInterest).toBe(366.67);
     });
   });
+
+  describe('Compound Interest Mathematical Parity', () => {
+    test('Benchmark: ₹10,000 @ 12% Yearly Compound Interest for 3 months -> Exactly 303.01', () => {
+      const txns = [
+        { type: 'DEBIT', amount: 10000, date: '2026-01-01', interestRate: 12, rateUnit: 'yearly', interestType: 'compound' }
+      ];
+      const res = calculateLedger(txns, { interestRatePerYear: 12, rateUnit: 'yearly', interestType: 'compound' }, '2026-04-01');
+      expect(res.currentPrincipal).toBe(10000);
+      expect(res.currentAdvance).toBe(0);
+      expect(res.totalAccruedInterest).toBe(303.01);
+      expect(res.breakdownLog[0].rateApplied).toBe('12% yearly (Compound)');
+    });
+
+    test('20,000 @ 2% Monthly Compound Interest for 2 months -> Exactly 808.00', () => {
+      const txns = [
+        { type: 'DEBIT', amount: 20000, date: '2026-01-01', interestRate: 2, rateUnit: 'monthly', interestType: 'compound' }
+      ];
+      const res = calculateLedger(txns, { interestRatePerMonth: 2, rateUnit: 'monthly', interestType: 'compound' }, '2026-03-01');
+      expect(res.totalAccruedInterest).toBe(808.00);
+    });
+
+    test('Zero-Interest Advance with Compound Interest mode -> 0 Int accrued on advance', () => {
+      const txns = [
+        { type: 'CREDIT', amount: 5000, date: '2026-01-01', interestType: 'compound' },
+        { type: 'DEBIT', amount: 2000, date: '2026-02-01', interestType: 'compound' }
+      ];
+      const res = calculateLedger(txns, { interestRatePerYear: 12, rateUnit: 'yearly', interestType: 'compound' }, '2026-04-01');
+      expect(res.currentAdvance).toBe(3000);
+      expect(res.totalAccruedInterest).toBe(0);
+    });
+  });
 });
 
