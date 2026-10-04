@@ -130,6 +130,19 @@ export function calculateElapsedCalendarMonths(startDate: Date | string, endDate
   return months;
 }
 
+function isYearlyUnit(unit?: string | null, isAnnual?: boolean): boolean {
+  if (isAnnual === true) return true;
+  if (!unit) return false;
+  const u = String(unit).toLowerCase().trim();
+  return u === 'yearly' || u === 'annual' || u === 'annually' || u === 'year' || u === 'yr' || u === 'p.a.' || u === 'pa';
+}
+
+function isMonthlyUnit(unit?: string | null): boolean {
+  if (!unit) return false;
+  const u = String(unit).toLowerCase().trim();
+  return u === 'monthly' || u === 'month' || u === 'mo';
+}
+
 /**
  * Calculates the customer ledger state using the strict
  * "Running Balance with Zero-Interest Credit Protocol".
@@ -156,9 +169,12 @@ export function calculateLedger(
     if (rateOrOptions.interestRatePerYear !== undefined) {
       defaultRate = rateOrOptions.interestRatePerYear;
       isYearlyRate = true;
+    } else if (rateOrOptions.interestRatePerMonth !== undefined) {
+      defaultRate = rateOrOptions.interestRatePerMonth;
+      isYearlyRate = isYearlyUnit(rateOrOptions.rateUnit, rateOrOptions.isAnnual);
     } else {
-      defaultRate = rateOrOptions.interestRatePerMonth ?? 0;
-      isYearlyRate = rateOrOptions.rateUnit === 'yearly' || rateOrOptions.rateUnit === 'annual' || rateOrOptions.isAnnual === true;
+      defaultRate = (rateOrOptions as any).interestRate ?? (rateOrOptions as any).rate ?? 0;
+      isYearlyRate = isYearlyUnit(rateOrOptions.rateUnit, rateOrOptions.isAnnual);
     }
     principalDue = rateOrOptions.initialPrincipal ?? 0;
     advanceBalance = rateOrOptions.initialAdvance ?? 0;
@@ -221,7 +237,7 @@ export function calculateLedger(
       if (exactDays > 0) {
         const effectiveMonthlyRate = activeIsYearly ? rawActiveRate / 12 : rawActiveRate;
         const rateLabel = activeIsYearly 
-          ? `${roundMoney(effectiveMonthlyRate)}% monthly (${rawActiveRate}% yearly)` 
+          ? `${rawActiveRate}% yearly` 
           : `${rawActiveRate}% monthly`;
 
         if (principalDue > 0 && advanceBalance === 0) {
@@ -257,13 +273,19 @@ export function calculateLedger(
       }
     }
 
-    // Edge Case 43: Mid-stream Rate Change per Transaction override
+    // Mid-stream Rate & Rate Unit Change per Transaction override
     const txRate = tx.interestRate ?? tx.rate;
     if (txRate !== undefined && txRate !== null && !isNaN(Number(txRate))) {
       rawActiveRate = Number(txRate);
-      if (tx.rateUnit === 'yearly' || tx.rateUnit === 'annual' || tx.isAnnual) {
+      if (isYearlyUnit(tx.rateUnit, tx.isAnnual)) {
         activeIsYearly = true;
-      } else if (tx.rateUnit === 'monthly') {
+      } else if (isMonthlyUnit(tx.rateUnit)) {
+        activeIsYearly = false;
+      }
+    } else if (tx.rateUnit !== undefined || tx.isAnnual !== undefined) {
+      if (isYearlyUnit(tx.rateUnit, tx.isAnnual)) {
+        activeIsYearly = true;
+      } else if (isMonthlyUnit(tx.rateUnit)) {
         activeIsYearly = false;
       }
     }
@@ -282,9 +304,20 @@ export function calculateLedger(
       principalDue = roundMoney(principalDue + amount);
     } else if (type === 'CREDIT') {
       // Phase 1: Pay off accruedInterest first
-      const intPayment = roundMoney(Math.min(amount, accruedInterest));
+      let intPayment = roundMoney(Math.min(amount, accruedInterest));
       accruedInterest = roundMoney(accruedInterest - intPayment);
       amount = roundMoney(amount - intPayment);
+
+      // Deduct intPayment from breakdownLog phase interestAccrued entries
+      let remainingIntToDeduct = intPayment;
+      for (let i = breakdownLog.length - 1; i >= 0 && remainingIntToDeduct > 0; i--) {
+        const phase = breakdownLog[i];
+        if (phase.interestAccrued > 0) {
+          const deduct = roundMoney(Math.min(phase.interestAccrued, remainingIntToDeduct));
+          phase.interestAccrued = roundMoney(phase.interestAccrued - deduct);
+          remainingIntToDeduct = roundMoney(remainingIntToDeduct - deduct);
+        }
+      }
 
       // Phase 2: Pay off principalDue second
       const prinPayment = roundMoney(Math.min(amount, principalDue));
@@ -312,7 +345,7 @@ export function calculateLedger(
       if (exactDays > 0) {
         const effectiveMonthlyRate = activeIsYearly ? rawActiveRate / 12 : rawActiveRate;
         const rateLabel = activeIsYearly 
-          ? `${roundMoney(effectiveMonthlyRate)}% monthly (${rawActiveRate}% yearly)` 
+          ? `${rawActiveRate}% yearly` 
           : `${rawActiveRate}% monthly`;
 
         if (principalDue > 0 && advanceBalance === 0) {
@@ -349,11 +382,17 @@ export function calculateLedger(
     }
   }
 
-  // Directive 3 / Item 50: Output Format
+  // Directive 2: Enforce Strict Array Summation of breakdownLog phase interestAccrued
+  const phaseSum = roundMoney(
+    breakdownLog.reduce((sum, entry) => sum + (entry.interestAccrued || 0), 0)
+  );
+
+  const totalAccruedInterest = accruedInterest > phaseSum ? roundMoney(accruedInterest) : phaseSum;
+
   return {
     currentPrincipal: roundMoney(principalDue),
     currentAdvance: roundMoney(advanceBalance),
-    totalAccruedInterest: roundMoney(accruedInterest),
+    totalAccruedInterest,
     breakdownLog,
   };
 }

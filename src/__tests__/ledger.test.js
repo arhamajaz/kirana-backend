@@ -678,5 +678,33 @@ describe('calculateLedger Interest Engine (50 Test Cases)', () => {
       expect(res.totalAccruedInterest).toBe(0);
     });
   });
+
+  describe('Multi-Phase Regression Tests (Directive 3)', () => {
+    test('Multi-Phase: ₹10,000 principal, Phase 1 (5% yearly for 4 months), Phase 2 (6% yearly for remaining 4 months)', () => {
+      const txns = [
+        { type: 'DEBIT', amount: 10000, date: '2025-01-01', interestRate: 5, rateUnit: 'yearly' },
+        { type: 'DEBIT', amount: 0, date: '2025-05-01', interestRate: 6, rateUnit: 'yearly' },
+      ];
+      const res = calculateLedger(txns, { interestRatePerYear: 5, rateUnit: 'yearly' }, '2025-09-01');
+
+      expect(res.breakdownLog).toHaveLength(2);
+
+      const phase1 = res.breakdownLog[0];
+      const phase2 = res.breakdownLog[1];
+
+      // Phase 1: 5% yearly for 4 months on 10,000 -> 10,000 * (0.05/12) * 4 = 166.67
+      expect(phase1.rateApplied).toBe('5% yearly');
+      expect(phase1.interestAccrued).toBe(166.67);
+
+      // Phase 2: 6% yearly for 4 months on 10,000 -> 10,000 * (0.06/12) * 4 = 200.00
+      expect(phase2.rateApplied).toBe('6% yearly');
+      expect(phase2.interestAccrued).toBe(200.00);
+
+      // Total interest must be strict summation of Phase 1 + Phase 2
+      const phaseSum = Math.round((phase1.interestAccrued + phase2.interestAccrued) * 100) / 100;
+      expect(res.totalAccruedInterest).toBe(phaseSum);
+      expect(res.totalAccruedInterest).toBe(366.67);
+    });
+  });
 });
 
