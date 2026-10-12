@@ -31,13 +31,18 @@ export class LedgerController {
 
       const result = await ledgerService.generateLedger(userId, customerId, calculationDate);
       const breakdownLog = Array.isArray(result.breakdownLog) ? result.breakdownLog : [];
+      const summaryWithBreakdown = result.summary
+        ? { ...result.summary, breakdownLog }
+        : result.summary;
 
       res.status(200).json({
         status: 'success',
         data: {
           ...result,
+          summary: summaryWithBreakdown,
           breakdownLog,
         },
+        summary: summaryWithBreakdown,
         breakdownLog,
       });
     } catch (err) {

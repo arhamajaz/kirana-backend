@@ -47,6 +47,7 @@ export interface LedgerSummary {
   accruedInterest: number;
   totalDue: number;
   unallocatedCredit?: number;
+  breakdownLog?: BreakdownEntry[];
 }
 
 export interface LedgerResult {
@@ -485,6 +486,7 @@ export class LedgerService {
       outstandingPrincipal: this.roundTo2(runningResult.currentPrincipal),
       accruedInterest: this.roundTo2(runningResult.totalAccruedInterest),
       totalDue: this.roundTo2(runningResult.currentPrincipal + runningResult.totalAccruedInterest),
+      breakdownLog: runningResult.breakdownLog,
     };
 
     const advance = runningResult.currentAdvance > 0 ? runningResult.currentAdvance : totalUnallocatedCredit;
