@@ -30,10 +30,15 @@ export class LedgerController {
       }
 
       const result = await ledgerService.generateLedger(userId, customerId, calculationDate);
+      const breakdownLog = Array.isArray(result.breakdownLog) ? result.breakdownLog : [];
 
       res.status(200).json({
         status: 'success',
-        data: result,
+        data: {
+          ...result,
+          breakdownLog,
+        },
+        breakdownLog,
       });
     } catch (err) {
       next(err);
