@@ -134,7 +134,7 @@ export function calculateElapsedCalendarMonths(startDate: Date | string, endDate
 
 function isYearlyUnit(unit?: string | null, isAnnual?: boolean): boolean {
   if (isAnnual === true) return true;
-  if (!unit) return false;
+  if (!unit) return true;
   const u = String(unit).toLowerCase().trim();
   return u === 'yearly' || u === 'annual' || u === 'annually' || u === 'year' || u === 'yr' || u === 'p.a.' || u === 'pa';
 }
@@ -155,7 +155,7 @@ export function calculateLedger(
   asOfDateParam: Date | string | null = null
 ): LedgerCalculationResult {
   let defaultRate = 0;
-  let isYearlyRate = false;
+  let isYearlyRate = true;
   let defaultInterestType = 'simple';
   let asOfDate: Date | null = null;
   let principalDue = 0;
@@ -174,7 +174,7 @@ export function calculateLedger(
       isYearlyRate = true;
     } else if (rateOrOptions.interestRatePerMonth !== undefined) {
       defaultRate = rateOrOptions.interestRatePerMonth;
-      isYearlyRate = isYearlyUnit(rateOrOptions.rateUnit, rateOrOptions.isAnnual);
+      isYearlyRate = rateOrOptions.rateUnit ? isYearlyUnit(rateOrOptions.rateUnit, rateOrOptions.isAnnual) : false;
     } else {
       defaultRate = (rateOrOptions as any).interestRate ?? (rateOrOptions as any).rate ?? 0;
       isYearlyRate = isYearlyUnit(rateOrOptions.rateUnit, rateOrOptions.isAnnual);

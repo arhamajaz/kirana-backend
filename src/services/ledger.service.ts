@@ -161,7 +161,7 @@ export class LedgerService {
 
     const runningResult = calculateLedger(
       engineTxns,
-      Number(customer.lendingRate),
+      { interestRatePerYear: Number(customer.lendingRate), rateUnit: 'yearly' },
       calculationDate,
     );
 
